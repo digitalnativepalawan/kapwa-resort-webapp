@@ -300,6 +300,60 @@ export type Database = {
         }
         Relationships: []
       }
+      dining_reservations: {
+        Row: {
+          contact: string
+          created_at: string
+          created_by: string
+          guest_name: string
+          id: string
+          items: Json
+          location_detail: string
+          location_type: string
+          notes: string
+          pax: number
+          reservation_date: string
+          reservation_time: string
+          status: string
+          table_name: string
+          updated_at: string
+        }
+        Insert: {
+          contact?: string
+          created_at?: string
+          created_by?: string
+          guest_name?: string
+          id?: string
+          items?: Json
+          location_detail?: string
+          location_type?: string
+          notes?: string
+          pax?: number
+          reservation_date?: string
+          reservation_time?: string
+          status?: string
+          table_name?: string
+          updated_at?: string
+        }
+        Update: {
+          contact?: string
+          created_at?: string
+          created_by?: string
+          guest_name?: string
+          id?: string
+          items?: Json
+          location_detail?: string
+          location_type?: string
+          notes?: string
+          pax?: number
+          reservation_date?: string
+          reservation_time?: string
+          status?: string
+          table_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       employee_bonuses: {
         Row: {
           amount: number
@@ -1439,6 +1493,7 @@ export type Database = {
           location_detail: string | null
           order_type: string
           payment_type: string | null
+          ready_for_billing: boolean
           room_id: string | null
           scheduled_for: string | null
           service_charge: number
@@ -1460,6 +1515,7 @@ export type Database = {
           location_detail?: string | null
           order_type?: string
           payment_type?: string | null
+          ready_for_billing?: boolean
           room_id?: string | null
           scheduled_for?: string | null
           service_charge?: number
@@ -1481,6 +1537,7 @@ export type Database = {
           location_detail?: string | null
           order_type?: string
           payment_type?: string | null
+          ready_for_billing?: boolean
           room_id?: string | null
           scheduled_for?: string | null
           service_charge?: number
