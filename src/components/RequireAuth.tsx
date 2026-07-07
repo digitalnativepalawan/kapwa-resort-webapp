@@ -4,7 +4,8 @@ import { hasAccess } from '@/lib/permissions';
 import { getStaffSession, clearStaffSession } from '@/lib/session';
 import { toast } from 'sonner';
 
-const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
+const USE_STAFF_JWT = import.meta.env.VITE_USE_STAFF_JWT === 'true';
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -22,14 +23,24 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
       navigate('/', { replace: true });
       return;
     }
+
+    if (USE_STAFF_JWT && !session.token) {
+      clearStaffSession();
+      setSession(null);
+      toast.error('Please sign in again to create a secure session.');
+      navigate('/', { replace: true });
+      return;
+    }
+
     const perms: string[] = session.permissions || [];
-    const isAdmin = perms.includes('admin');
+    const isAdmin = session.isAdmin === true || perms.includes('admin');
 
     if (adminOnly && !isAdmin) {
       toast.error('Admin access required');
       navigate('/', { replace: true });
       return;
     }
+
     if (requiredPermission && !isAdmin) {
       const keys = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
       if (!keys.some(k => hasAccess(perms, k))) {
@@ -39,7 +50,6 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
     }
   }, [session, navigate, requiredPermission, adminOnly]);
 
-  // Inactivity timeout
   useEffect(() => {
     if (!session) return;
 
@@ -52,20 +62,22 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
     };
 
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
-    events.forEach(e => document.addEventListener(e, resetTimer));
+    events.forEach(eventName => document.addEventListener(eventName, resetTimer));
     resetTimer();
 
     return () => {
-      events.forEach(e => document.removeEventListener(e, resetTimer));
+      events.forEach(eventName => document.removeEventListener(eventName, resetTimer));
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [session]);
 
   if (!session) return null;
+  if (USE_STAFF_JWT && !session.token) return null;
 
   const perms: string[] = session.permissions || [];
-  const isAdmin = perms.includes('admin');
+  const isAdmin = session.isAdmin === true || perms.includes('admin');
   if (adminOnly && !isAdmin) return null;
+
   if (requiredPermission && !isAdmin) {
     const keys = Array.isArray(requiredPermission) ? requiredPermission : [requiredPermission];
     if (!keys.some(k => hasAccess(perms, k))) return null;
