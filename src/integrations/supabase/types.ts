@@ -2773,6 +2773,10 @@ export type Database = {
         Args: { p_amount: number; p_ingredient_id: string }
         Returns: undefined
       }
+      has_permission: { Args: { section: string }; Returns: boolean }
+      is_admin: { Args: never; Returns: boolean }
+      is_staff: { Args: never; Returns: boolean }
+      jwt_permissions: { Args: never; Returns: Json }
     }
     Enums: {
       [_ in never]: never
