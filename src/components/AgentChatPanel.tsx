@@ -19,15 +19,14 @@ const defaultSettings = {
   provider: 'ollama',
   baseUrl: 'http://127.0.0.1:11434',
   model: 'qwen2.5:3b',
-  fallbackModel: 'ornith:9b',
   temperature: 0.2,
-  maxTokens: 180,
+  maxTokens: 140,
 };
 
 async function loadSharedBotData() {
   const [settingsResult, memoryResult] = await Promise.all([
     (supabase.from('settings') as any)
-      .select('bot_enabled, bot_base_url, bot_model, bot_temperature, bot_max_tokens')
+      .select('bot_enabled, bot_base_url, bot_temperature, bot_max_tokens')
       .limit(1)
       .maybeSingle(),
     (supabase.from('guest_faq_memory') as any)
@@ -42,7 +41,6 @@ async function loadSharedBotData() {
       ...defaultSettings,
       enabled: row?.bot_enabled !== false,
       baseUrl: row?.bot_base_url || defaultSettings.baseUrl,
-      model: row?.bot_model || defaultSettings.model,
       temperature: Number(row?.bot_temperature ?? defaultSettings.temperature),
       maxTokens: Number(row?.bot_max_tokens ?? defaultSettings.maxTokens),
     },
@@ -99,7 +97,7 @@ export default function AgentChatPanel() {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
         role: 'assistant',
-        content: `Hermes is unavailable: ${message}. Make sure Hermes and Ollama are running on the local computer.`,
+        content: `Hermes is unavailable: ${message}. Make sure Hermes, Ollama, and qwen2.5:3b are running on the local computer.`,
         timestamp: new Date(),
       }]);
     } finally {
@@ -133,7 +131,7 @@ export default function AgentChatPanel() {
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground font-body text-sm gap-2">
                 <MessageSquare className="w-10 h-10 opacity-40" />
                 <p>How may we help with your stay?</p>
-                <p className="text-xs opacity-60">Powered locally by Hermes and Ollama.</p>
+                <p className="text-xs opacity-60">Powered locally by Hermes, Ollama, and qwen2.5:3b.</p>
               </div>
             )}
             <div className="space-y-3">
