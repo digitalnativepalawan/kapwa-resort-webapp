@@ -1,0 +1,98 @@
+# TALA voice agent -- full local stack.
+#
+# Services:
+#   livekit        self-hosted real-time media server (room transport)
+#   ollama         local LLM inference (Qwen3 8B)
+#   whisper        whisper.cpp server, OpenAI-compatible STT
+#   kokoro         Kokoro-FastAPI, OpenAI-compatible TTS
+#   token-server   FastAPI: mints LiveKit access tokens for the frontend
+#   tala-agent     LiveKit agent worker: STT -> Ollama -> tools -> TTS
+#   frontend       React/Vite PWA, served by nginx
+#
+# Image references verified against upstream docs as of 2026-06-23:
+#   - ghcr.io/ggml-org/whisper.cpp:main  (official, includes whisper-server)
+#   - ghcr.io/remsky/kokoro-fastapi-cpu:latest  (official, OpenAI-compatible)
+#   - ollama/ollama:latest  (official)
+#   - livekit/livekit-server:latest  (official, self-hosted LiveKit)
+#
+# Run: docker compose up --build
+# First run will pull/build images and download the whisper + ollama models
+# (see comments below) -- expect several GB of downloads on first start.
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    ports:
+      - "7880:7880"   # WebSocket signaling
+      - "7881:7881"   # TCP fallback
+      - "50000-50100:50000-50100/udp"  # WebRTC media (range trimmed for laptop use)
+    environment:
+      LIVEKIT_KEYS: "devkey: devsecret_change_me_minimum_32_chars"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    # First run: docker compose exec ollama ollama pull qwen3:8b
+
+  whisper:
+    image: ghcr.io/ggml-org/whisper.cpp:main
+    command: >
+      whisper-server --host 0.0.0.0 --port 9000
+      -m /models/ggml-base.en.bin --convert
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_models:/models
+    restart: unless-stopped
+    # First run, download a model into the volume:
+    # docker compose run --rm whisper "./models/download-ggml-model.sh base.en /models"
+
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    ports:
+      - "8880:8880"
+    restart: unless-stopped
+
+  token-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    command: ["uvicorn", "agent.token_server:app", "--host", "0.0.0.0", "--port", "3001"]
+    ports:
+      - "3001:3001"
+    env_file: .env
+    depends_on:
+      - livekit
+    restart: unless-stopped
+
+  tala-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    env_file: .env
+    depends_on:
+      - livekit
+      - ollama
+      - whisper
+      - kokoro
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - token-server
+    restart: unless-stopped
+
+volumes:
+  ollama_models:
+  whisper_models:

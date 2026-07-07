@@ -1,0 +1,2 @@
+CREATE INDEX IF NOT EXISTS idx_resort_ops_bookings_dates ON public.resort_ops_bookings(check_in, check_out);
+CREATE INDEX IF NOT EXISTS idx_resort_ops_bookings_unit_id ON public.resort_ops_bookings(unit_id);

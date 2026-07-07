@@ -1,0 +1,1 @@
+ALTER TABLE public.employee_tasks ADD COLUMN IF NOT EXISTS archived_at timestamptz DEFAULT NULL;

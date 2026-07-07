@@ -1,0 +1,34 @@
+project_id = "paghxagqnaisxesmhnwj"
+
+[functions.employee-auth]
+verify_jwt = false
+
+[functions.orders-today]
+verify_jwt = false
+
+[functions.frontdesk-today]
+verify_jwt = false
+
+[functions.housekeeping]
+verify_jwt = false
+
+[functions.admin-summary]
+verify_jwt = false
+
+[functions.tours-today]
+verify_jwt = false
+
+[functions.guest-requests-api]
+verify_jwt = false
+
+[functions.send-telegram]
+verify_jwt = false
+
+[functions.ops-coordinator]
+verify_jwt = false
+
+[functions.reservations-ai]
+verify_jwt = false
+
+[functions.concierge-ai]
+verify_jwt = false

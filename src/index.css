@@ -1,0 +1,256 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Lato:wght@300;400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Light mode (default) ── */
+  :root {
+    --background: 0 0% 99%;
+    --foreground: 220 20% 15%;
+
+    --card: 220 15% 97%;
+    --card-foreground: 220 20% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 15%;
+
+    --primary: 220 30% 25%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 12% 92%;
+    --secondary-foreground: 220 20% 15%;
+
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 35 40% 55%;
+    --accent-foreground: 220 30% 12%;
+
+    --destructive: 0 62.8% 50%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 30% 12%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 10% 85%;
+    --input: 220 10% 85%;
+    --ring: 220 30% 50%;
+
+    --radius: 0.25rem;
+
+    --sidebar-background: 220 12% 96%;
+    --sidebar-foreground: 220 20% 15%;
+    --sidebar-primary: 220 30% 25%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 92%;
+    --sidebar-accent-foreground: 220 20% 15%;
+    --sidebar-border: 220 10% 88%;
+    --sidebar-ring: 220 30% 50%;
+
+    --navy-deep: 220 12% 95%;
+    --cream: 220 20% 15%;
+    --cream-dim: 220 10% 45%;
+    --gold: 38 60% 50%;
+    --champagne: 38 55% 65%;
+    --emerald: 158 45% 38%;
+    --teal: 185 50% 42%;
+
+    --gradient-ocean: linear-gradient(135deg, hsl(220 30% 25%) 0%, hsl(185 50% 35%) 100%);
+    --gradient-hero: linear-gradient(140deg, hsl(220 25% 96%) 0%, hsl(220 15% 92%) 60%, hsl(38 40% 88%) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(38 65% 60%) 0%, hsl(38 55% 45%) 100%);
+    --shadow-luxury: 0 20px 60px -20px hsl(220 30% 20% / 0.18), 0 8px 24px -12px hsl(220 30% 20% / 0.12);
+    --shadow-glow-gold: 0 0 40px -8px hsl(38 60% 50% / 0.35);
+    --glass-bg: 220 15% 97% / 0.65;
+    --glass-border: 220 15% 80% / 0.5;
+  }
+
+  /* ── Dark mode ── */
+  .dark {
+    --background: 220 40% 7%;
+    --foreground: 40 30% 92%;
+
+    --card: 220 32% 11%;
+    --card-foreground: 40 30% 92%;
+
+    --popover: 220 35% 9%;
+    --popover-foreground: 40 30% 92%;
+
+    --primary: 38 55% 70%;
+    --primary-foreground: 220 40% 8%;
+
+    --secondary: 220 25% 17%;
+    --secondary-foreground: 40 30% 92%;
+
+    --muted: 220 22% 15%;
+    --muted-foreground: 40 15% 65%;
+
+    --accent: 38 55% 65%;
+    --accent-foreground: 220 40% 8%;
+
+    --destructive: 0 62.8% 50%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 220 40% 8%;
+    --success: 158 50% 45%;
+    --success-foreground: 220 40% 8%;
+    --destructive-foreground: 40 30% 95%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 38 55% 65%;
+
+    --sidebar-background: 220 30% 10%;
+    --sidebar-foreground: 40 30% 88%;
+    --sidebar-primary: 40 30% 82%;
+    --sidebar-primary-foreground: 220 30% 12%;
+    --sidebar-accent: 220 20% 18%;
+    --sidebar-accent-foreground: 40 30% 88%;
+    --sidebar-border: 220 15% 22%;
+    --sidebar-ring: 40 30% 70%;
+
+    --navy-deep: 220 45% 5%;
+    --cream: 40 30% 92%;
+    --cream-dim: 40 15% 65%;
+    --gold: 38 60% 60%;
+    --champagne: 38 55% 70%;
+    --emerald: 158 50% 50%;
+    --teal: 185 55% 50%;
+
+    --gradient-ocean: linear-gradient(135deg, hsl(220 45% 8%) 0%, hsl(185 50% 18%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(220 40% 12%) 0%, hsl(220 45% 6%) 70%);
+    --gradient-gold: linear-gradient(135deg, hsl(38 65% 65%) 0%, hsl(38 55% 50%) 100%);
+    --shadow-luxury: 0 30px 80px -20px hsl(0 0% 0% / 0.55), 0 12px 30px -12px hsl(0 0% 0% / 0.4);
+    --shadow-glow-gold: 0 0 50px -8px hsl(38 60% 60% / 0.4);
+    --glass-bg: 220 32% 11% / 0.55;
+    --glass-border: 38 30% 55% / 0.18;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Lato', sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Playfair Display', serif;
+  }
+  .font-serif-display {
+    font-family: 'Cormorant Garamond', 'Playfair Display', serif;
+    letter-spacing: 0.005em;
+  }
+  .font-body {
+    font-family: 'Lato', sans-serif;
+  }
+  .luxury-glass {
+    background-color: hsl(var(--glass-bg));
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid hsl(var(--glass-border));
+    box-shadow: var(--shadow-luxury);
+  }
+  .luxury-shadow { box-shadow: var(--shadow-luxury); }
+  .luxury-glow-gold { box-shadow: var(--shadow-glow-gold); }
+  .luxury-stat-glow-rose {
+    box-shadow: inset 0 0 70px -18px hsl(var(--destructive) / 0.45), 0 8px 30px -22px hsl(var(--destructive) / 0.4);
+  }
+  .luxury-stat-glow-gold {
+    box-shadow: inset 0 0 70px -18px hsl(var(--gold) / 0.45), 0 8px 30px -22px hsl(var(--gold) / 0.35);
+  }
+  .luxury-stat-glow-emerald {
+    box-shadow: inset 0 0 70px -18px hsl(var(--emerald) / 0.45), 0 8px 30px -22px hsl(var(--emerald) / 0.35);
+  }
+  .luxury-stat-glow-teal {
+    box-shadow: inset 0 0 70px -18px hsl(var(--teal) / 0.45), 0 8px 30px -22px hsl(var(--teal) / 0.35);
+  }
+  .bg-gradient-ocean { background-image: var(--gradient-ocean); }
+  .bg-gradient-hero { background-image: var(--gradient-hero); }
+  .bg-gradient-gold { background-image: var(--gradient-gold); }
+  .text-gradient-gold {
+    background-image: var(--gradient-gold);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .dotted-leader {
+    flex: 1;
+    border-bottom: 1px dotted hsl(var(--cream-dim));
+    margin: 0 8px;
+    align-self: flex-end;
+    margin-bottom: 4px;
+  }
+  .bg-navy-texture {
+    background-color: hsl(var(--navy-deep));
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, hsla(220, 30%, 15%, 0.4) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsla(220, 25%, 18%, 0.3) 0%, transparent 50%);
+  }
+  .dark .bg-navy-texture {
+    background-color: hsl(var(--navy-deep));
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, hsla(220, 30%, 15%, 0.4) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsla(220, 25%, 18%, 0.3) 0%, transparent 50%);
+  }
+  :root:not(.dark) .bg-navy-texture {
+    background-color: hsl(var(--background));
+    background-image: 
+      radial-gradient(ellipse at 20% 50%, hsla(220, 10%, 92%, 0.5) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, hsla(220, 10%, 90%, 0.4) 0%, transparent 50%);
+  }
+  .blink-dot {
+    animation: blink-dot 1s ease-in-out infinite;
+  }
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.7); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px 4px hsla(38, 60%, 58%, 0.4), inset 0 0 6px 2px hsla(38, 60%, 58%, 0.15); border-color: hsla(38, 60%, 58%, 0.7); background-color: hsla(38, 60%, 58%, 0.08); }
+  50% { box-shadow: 0 0 30px 10px hsla(38, 60%, 58%, 0.7), inset 0 0 12px 4px hsla(38, 60%, 58%, 0.25); border-color: hsla(38, 60%, 58%, 1); background-color: hsla(38, 60%, 58%, 0.18); }
+}
+
+@keyframes btn-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.03); }
+}
+
+.new-order-card {
+  animation: glow-pulse 1.5s ease-in-out infinite;
+}
+
+.new-order-btn {
+  animation: btn-pulse 1.2s ease-in-out infinite;
+}
+
+.tab-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Prevent mobile scroll jumping during input typing */
+input, textarea, select {
+  scroll-margin: 1rem;
+}
+
+/* Stabilize scroll anchoring on mobile */
+@supports (overflow-anchor: auto) {
+  [class*="space-y-"] {
+    overflow-anchor: auto;
+  }
+}

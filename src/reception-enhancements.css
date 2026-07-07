@@ -1,0 +1,25 @@
+.enhanced-card {
+  transition: all 0.2s ease;
+}
+
+.enhanced-card:hover {
+  border-color: #C5A028;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+.enhanced-stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.new-order-card {
+  animation: glow-pulse 1.5s ease-in-out infinite;
+  border-radius: 12px;
+}
+
+.enhanced-action-btn {
+  transition: all 0.2s ease;
+}
+
+.enhanced-action-btn:hover {
+  transform: scale(0.98);
+}
