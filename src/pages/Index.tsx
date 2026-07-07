@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { getStaffSession, setStaffSession, isRemembered } from '@/lib/session';
 import ThemeToggle from '@/components/ThemeToggle';
 
+const USE_STAFF_JWT = import.meta.env.VITE_USE_STAFF_JWT === 'true';
+
 const Index = () => {
   const navigate = useNavigate();
   const { data: profile } = useResortProfile();
@@ -21,30 +23,44 @@ const Index = () => {
   const [remember, setRemember] = useState(() => isRemembered());
   const [loading, setLoading] = useState(false);
 
-  // Auto-redirect if already logged in
   useEffect(() => {
     const existing = getStaffSession();
-    if (existing) {
-      const perms: string[] = existing.permissions || [];
-      const isAdmin = existing.isAdmin || perms.includes('admin');
-      if (isAdmin) {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate('/staff', { replace: true });
-      }
+    if (!existing) return;
+
+    if (USE_STAFF_JWT && !existing.token) {
+      return;
     }
+
+    const perms: string[] = existing.permissions || [];
+    const isAdmin = existing.isAdmin || perms.includes('admin');
+    navigate(isAdmin ? '/admin' : '/staff', { replace: true });
   }, [navigate]);
 
   const handleLogin = async () => {
     if (!name.trim() || !pin) return;
     setLoading(true);
+
     try {
+      const action = mode === 'admin' ? 'admin-verify' : 'verify';
       const { data, error } = await supabase.functions.invoke('employee-auth', {
-        body: { action: 'verify', name: name.trim(), pin },
+        body: { action, name: name.trim(), pin },
       });
+
       if (error || data?.error) {
         toast.error(data?.error || 'Login failed');
-        setLoading(false);
+        return;
+      }
+
+      if (USE_STAFF_JWT && !data?.token) {
+        toast.error('Secure login is not fully configured. STAFF_JWT_SECRET is missing or invalid.');
+        return;
+      }
+
+      const permissions = data.permissions || [];
+      const isAdmin = data.isAdmin || permissions.includes('admin');
+
+      if (mode === 'admin' && !isAdmin) {
+        toast.error('Admin access required');
         return;
       }
 
@@ -52,35 +68,26 @@ const Index = () => {
         {
           name: data.employee.name,
           employeeId: data.employee.id,
-          isAdmin: data.isAdmin || false,
-          permissions: data.permissions || [],
+          isAdmin,
+          permissions,
           token: data.token || undefined,
         },
         remember,
       );
+
       localStorage.setItem('emp_id', data.employee.id);
       localStorage.setItem('emp_name', data.employee.name);
       toast.success(`Welcome, ${data.employee.name}`);
-
-      if (mode === 'admin') {
-        const perms = data.permissions || [];
-        if (data.isAdmin || perms.includes('admin')) {
-          navigate('/admin');
-        } else {
-          toast.error('Admin access required');
-        }
-      } else {
-        navigate('/staff');
-      }
+      navigate(isAdmin ? '/admin' : '/staff');
     } catch {
       toast.error('Login failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center px-6 py-10 bg-background">
-      {/* Ambient layered gradient backdrop */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
@@ -92,7 +99,6 @@ const Index = () => {
             'linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--navy-deep)) 100%)',
         }}
       />
-      {/* Subtle starlight texture */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 opacity-[0.04]"
@@ -132,9 +138,7 @@ const Index = () => {
 
       {!mode ? (
         <div className="flex flex-col gap-3 w-full max-w-sm animate-fade-in">
-          <p className="font-serif-display italic text-2xl text-foreground text-center mb-1">
-            Welcome
-          </p>
+          <p className="font-serif-display italic text-2xl text-foreground text-center mb-1">Welcome</p>
           <p className="font-body text-xs text-muted-foreground tracking-wider text-center mb-4">
             Please select how you'd like to continue
           </p>
