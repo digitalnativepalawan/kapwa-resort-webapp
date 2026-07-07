@@ -1,0 +1,1 @@
+ALTER TABLE public.employees ADD COLUMN preferred_contact_method text NOT NULL DEFAULT 'messenger';

@@ -1,0 +1,1 @@
+UPDATE public.employees SET active = true WHERE id = 'ab7b55a0-3b15-46e9-b9db-b2d97ddb3424';

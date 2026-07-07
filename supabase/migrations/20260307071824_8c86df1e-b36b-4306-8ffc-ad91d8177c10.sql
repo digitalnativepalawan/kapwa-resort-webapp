@@ -1,0 +1,1 @@
+ALTER TABLE public.room_types ADD COLUMN base_rate numeric NOT NULL DEFAULT 0;

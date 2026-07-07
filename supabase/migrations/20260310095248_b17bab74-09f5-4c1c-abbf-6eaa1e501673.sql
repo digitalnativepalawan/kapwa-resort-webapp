@@ -1,0 +1,1 @@
+UPDATE units SET status = 'ready' WHERE unit_name = 'Double Room #2' AND status = 'to_clean';
