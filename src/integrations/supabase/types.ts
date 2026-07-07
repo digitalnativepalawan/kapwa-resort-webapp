@@ -303,51 +303,66 @@ export type Database = {
       dining_reservations: {
         Row: {
           contact: string
+          contact_number: string | null
           created_at: string
           created_by: string
+          email: string | null
           guest_name: string
           id: string
           items: Json
           location_detail: string
           location_type: string
           notes: string
+          occasion: string | null
           pax: number
+          pre_orders: Json | null
           reservation_date: string
           reservation_time: string
+          reservation_type: string
           status: string
           table_name: string
           updated_at: string
         }
         Insert: {
           contact?: string
+          contact_number?: string | null
           created_at?: string
           created_by?: string
+          email?: string | null
           guest_name?: string
           id?: string
           items?: Json
           location_detail?: string
           location_type?: string
           notes?: string
+          occasion?: string | null
           pax?: number
+          pre_orders?: Json | null
           reservation_date?: string
           reservation_time?: string
+          reservation_type?: string
           status?: string
           table_name?: string
           updated_at?: string
         }
         Update: {
           contact?: string
+          contact_number?: string | null
           created_at?: string
           created_by?: string
+          email?: string | null
           guest_name?: string
           id?: string
           items?: Json
           location_detail?: string
           location_type?: string
           notes?: string
+          occasion?: string | null
           pax?: number
+          pre_orders?: Json | null
           reservation_date?: string
           reservation_time?: string
+          reservation_type?: string
           status?: string
           table_name?: string
           updated_at?: string
