@@ -84,7 +84,7 @@ async function executeApprovedAction(action: AgentAction) {
     const { data: existing, error: lookupError } = await from('housekeeping_orders')
       .select('id,status').eq('unit_name', unitName).not('status', 'in', '(completed,cancelled)').limit(1);
     if (lookupError) throw lookupError;
-    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: existing[0].id };
+    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: (existing[0] as any).id };
 
     const { data, error } = await from('housekeeping_orders')
       .insert({ unit_name: unitName, status: 'pending_inspection', cleaning_notes: 'Created by KAPWA Resort Operator after management approval.' })
