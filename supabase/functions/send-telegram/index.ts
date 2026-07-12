@@ -1,7 +1,7 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version, x-internal-secret",
 };
 
 const CHAT_IDS: Record<string, number> = {
@@ -15,9 +15,7 @@ const CHAT_IDS: Record<string, number> = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
@@ -28,8 +26,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { group, message } = await req.json();
-
+    const { group, message, reply_markup, disable_notification = false } = await req.json();
     if (!group || !message) {
       return new Response(JSON.stringify({ error: "group and message required" }), {
         status: 400,
@@ -37,37 +34,43 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Support comma-separated groups
-    const groups = (group as string).split(",").map((g: string) => g.trim());
-    const results: any[] = [];
+    const groups = String(group).split(",").map((value) => value.trim()).filter(Boolean);
+    const results: Record<string, unknown>[] = [];
 
-    for (const g of groups) {
-      const chatId = CHAT_IDS[g];
+    for (const groupKey of groups) {
+      const chatId = CHAT_IDS[groupKey];
       if (!chatId) {
-        results.push({ group: g, ok: false, error: "unknown group" });
+        results.push({ group: groupKey, ok: false, error: "unknown group" });
         continue;
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
           text: message,
           parse_mode: "HTML",
+          disable_notification,
+          ...(reply_markup ? { reply_markup } : {}),
         }),
       });
-
-      const data = await res.json();
-      results.push({ group: g, ok: data.ok, message_id: data.result?.message_id });
+      const data = await response.json();
+      results.push({
+        group: groupKey,
+        chat_id: chatId,
+        ok: Boolean(data.ok),
+        message_id: data.result?.message_id ?? null,
+        error: data.ok ? null : data.description ?? "Telegram send failed",
+      });
     }
 
     return new Response(JSON.stringify({ results }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
