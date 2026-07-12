@@ -2,7 +2,7 @@
 
 ## What this release does
 
-The Resort Operator reads live KAPWA operational data, produces a deterministic daily brief, optionally asks the configured AI runtime for management analysis, creates auditable action proposals, and executes only approved allow-listed actions.
+The Resort Operator reads the backoffice's existing hosted operational data, produces a deterministic daily brief, optionally asks the configured AI runtime for management analysis, creates approval-required actions in the app, records decisions in the existing `audit_log`, and executes only approved allow-listed actions.
 
 Automatic execution is limited to:
 
@@ -11,20 +11,9 @@ Automatic execution is limited to:
 
 Booking changes, rate changes, billing resolution, payments, refunds, external guest messages, destructive changes, and deletions remain manual.
 
-## 1. Apply the Supabase migration
+No new Supabase project, database, or agent tables are required.
 
-Apply:
-
-```text
-supabase/migrations/202607120001_resort_operator.sql
-```
-
-This creates:
-
-- `agent_runs`
-- `agent_actions`
-
-## 2. Configure the local agent runtime
+## 1. Configure the agent runtime
 
 Copy the template:
 
@@ -48,7 +37,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Never commit `.env` or `server/data/`.
 
-## 3. Install and run
+## 2. Install and run
 
 ```bash
 npm install
@@ -61,7 +50,7 @@ In a second terminal:
 npm run dev
 ```
 
-## 4. Configure the model
+## 3. Configure the model
 
 Open:
 
@@ -81,7 +70,7 @@ For OpenRouter, paste a key and load the current free/paid model catalog.
 
 For Ollama, run Ollama on the same machine, then use Detect to list installed models.
 
-## 5. Run the operator
+## 4. Run the operator
 
 Open:
 
@@ -91,14 +80,15 @@ Open:
 
 The operator will:
 
-1. read current bookings, rooms, housekeeping, requests, disputes, tours, and active orders;
+1. read current bookings, rooms, housekeeping, requests, disputes, tours, and active orders from the existing hosted backend;
 2. produce a deterministic operational summary;
 3. use the selected model for management analysis when available and authorized;
 4. fall back to deterministic analysis when the model runtime is unavailable;
-5. create approval-required actions;
-6. log the run, provider, model, inputs, outputs, decisions, and execution results.
+5. create approval-required actions in the browser;
+6. record runs, approvals, rejections, executions, and failures in the existing `audit_log`;
+7. execute only the approved housekeeping and urgent-request actions.
 
-## 6. Required release validation
+## 5. Release validation
 
 Run:
 
@@ -109,7 +99,7 @@ npm run build
 node --check server/index.js
 ```
 
-Then verify manually:
+Then verify:
 
 1. OpenRouter model catalog loads.
 2. Ollama detection lists installed models.
