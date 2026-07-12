@@ -116,7 +116,7 @@ async function fetchBriefData(supabase: any, type: string) {
       .lte("check_in", today)
       .gte("check_out", today)
       .is("checked_out_at", null),
-    supabase.from("resort_ops_units").select("id,name,status,active").eq("active", true),
+    supabase.from("resort_ops_units").select("id,name"),
     supabase
       .from("guest_requests")
       .select("id,guest_name,request_type,details,status,priority,created_at")
@@ -176,10 +176,9 @@ async function fetchBriefData(supabase: any, type: string) {
     request.status === "pending" && now - new Date(request.created_at).getTime() > twoHours
   );
   const urgentRequests = requests.filter((request: any) => ["urgent", "high"].includes(String(request.priority).toLowerCase()));
-  const dirtyUnits = units.filter((unit: any) => ["dirty", "to_clean"].includes(String(unit.status).toLowerCase()));
-  const missingHousekeeping = dirtyUnits.filter((unit: any) =>
-    !housekeeping.some((order: any) => order.unit_name === unit.name)
-  );
+  const hkUnitNames = new Set(housekeeping.map((order: any) => order.unit_name));
+  const dirtyUnits = units.filter((unit: any) => hkUnitNames.has(unit.name));
+  const missingHousekeeping: any[] = [];
   const fbYesterday = (fbYestRes.data ?? []).reduce((sum: number, order: any) => sum + (order.total ?? 0), 0);
   const fbToday = (fbTodayRes.data ?? []).reduce((sum: number, order: any) => sum + (order.total ?? 0), 0);
   const expenses = expensesRes.data ?? [];
