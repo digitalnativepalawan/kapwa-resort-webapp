@@ -75,6 +75,31 @@ const VERIFIERS: Record<string, (supabase: any, c: any) => Promise<{ ok: boolean
       .select("id, status").eq("id", c.source_id).maybeSingle();
     return { ok: !!data && ["Completed", "Paid", "Cancelled"].includes(data.status), evidence: { order: data } };
   },
+  guest_checked_in: async (supabase, c) => {
+    const { data } = await supabase.from("resort_ops_bookings")
+      .select("id, checked_in_at").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data?.checked_in_at, evidence: { booking: data } };
+  },
+  guest_checked_out: async (supabase, c) => {
+    const { data } = await supabase.from("resort_ops_bookings")
+      .select("id, checked_out_at").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data?.checked_out_at, evidence: { booking: data } };
+  },
+  tab_closed: async (supabase, c) => {
+    const { data } = await supabase.from("tabs")
+      .select("id, status").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data && data.status !== "open", evidence: { tab: data } };
+  },
+  stock_replenished: async (supabase, c) => {
+    const { data } = await supabase.from("resort_ops_assets")
+      .select("id, balance").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data && Number(data.balance) > 5, evidence: { asset: data } };
+  },
+  webhook_processed: async (supabase, c) => {
+    const { data } = await supabase.from("webhook_events")
+      .select("id, processed_at").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data?.processed_at, evidence: { webhook: data } };
+  },
 };
 
 export async function execute(supabase: any, actions: PlannedAction[], maxActions = 25): Promise<ExecutionResult[]> {

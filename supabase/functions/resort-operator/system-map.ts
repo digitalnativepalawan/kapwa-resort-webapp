@@ -17,7 +17,16 @@ export interface ToolDef {
 export const DOMAINS = [
   "guest_request",
   "unpaid_balance",
-  // future: housekeeping, maintenance, arrivals, departures, reservations, tours, fnb
+  "housekeeping",
+  "maintenance",
+  "arrival",
+  "departure",
+  "reservation_exception",
+  "reservation_conflict",
+  "tour",
+  "fnb",
+  "fnb_tab",
+  "inventory",
 ] as const;
 
 export const TABLES = {
