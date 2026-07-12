@@ -269,7 +269,6 @@ app.get('/api/hermes/health', async (_req, res) => {
 app.post('/api/hermes/chat', async (req, res) => {
   const { message, context, memory = [] } = req.body || {};
   if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'message is required' });
-
   const memoryReply = findMemoryAnswer(message, memory);
   if (memoryReply) return res.json({ reply: memoryReply, source: 'faq-memory' });
 
@@ -286,7 +285,7 @@ app.post('/api/hermes/chat', async (req, res) => {
   }
 });
 
-app.post('/api/operator/chat', async (req, res) => {
+app.post('/api/operator/chat', requireAdmin, async (req, res) => {
   const { question, snapshot, deterministicSummary } = req.body || {};
   if (typeof question !== 'string' || !question.trim()) return res.status(400).json({ error: 'question is required' });
   if (!snapshot || typeof snapshot !== 'object') return res.status(400).json({ error: 'snapshot is required' });
