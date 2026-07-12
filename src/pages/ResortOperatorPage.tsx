@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Bot, Check, Loader2, RefreshCw, Send, ShieldAlert, X } from 'lucide-react';
+import { ArrowLeft, Bot, Check, Loader2, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const from = (table: string) => supabase.from(table as any);
@@ -55,14 +55,25 @@ type CoordinatorResult = {
   };
 };
 
-async function runCoordinator(type: BriefType, question: string, delivery: 'preview' | 'telegram') {
-  const { data, error } = await supabase.functions.invoke('ops-coordinator', {
-    body: { type, question, delivery, group: 'managers' },
-  });
+type FullLoopResult = {
+  operations: CoordinatorResult;
+  concierge: { ok: boolean; total?: number; routed?: number; escalated?: number; complaints?: number; error?: string };
+  reservations: { ok: boolean; issues_found?: number; error?: string };
+  completed_at: string;
+};
+
+async function invokeFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke(name, { body });
   if (error) throw error;
-  if (!data?.ok) throw new Error(data?.error || 'Operations coordinator failed.');
-  return data as CoordinatorResult;
+  if (data?.ok === false) throw new Error(data.error || `${name} failed`);
+  return data as T;
 }
+
+const runCoordinator = (type: BriefType, question: string, delivery: 'preview' | 'telegram') =>
+  invokeFunction<CoordinatorResult>('ops-coordinator', { type, question, delivery, group: 'managers' });
+
+const runFullLoop = (type: BriefType, question: string) =>
+  invokeFunction<FullLoopResult & { ok: boolean }>('resort-agent-loop', { type, question });
 
 async function executeApprovedAction(action: AgentAction) {
   if (action.action_type === 'create_housekeeping_task') {
@@ -70,23 +81,13 @@ async function executeApprovedAction(action: AgentAction) {
     if (!unitName) throw new Error('Housekeeping action is missing a unit name.');
 
     const { data: existing, error: lookupError } = await from('housekeeping_orders')
-      .select('id,status')
-      .eq('unit_name', unitName)
-      .not('status', 'in', '(completed,cancelled)')
-      .limit(1);
+      .select('id,status').eq('unit_name', unitName).not('status', 'in', '(completed,cancelled)').limit(1);
     if (lookupError) throw lookupError;
-    if (existing?.length) {
-      return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: existing[0].id };
-    }
+    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: existing[0].id };
 
     const { data, error } = await from('housekeeping_orders')
-      .insert({
-        unit_name: unitName,
-        status: 'pending_inspection',
-        cleaning_notes: 'Created by KAPWA Resort Operator after management approval.',
-      })
-      .select('id,status,unit_name')
-      .single();
+      .insert({ unit_name: unitName, status: 'pending_inspection', cleaning_notes: 'Created by KAPWA Resort Operator after management approval.' })
+      .select('id,status,unit_name').single();
     if (error) throw error;
 
     notifyTelegram('housekeeping', `<b>New housekeeping task</b>\n${unitName}\nCreated by KAPWA Resort Operator.`);
@@ -97,9 +98,7 @@ async function executeApprovedAction(action: AgentAction) {
     if (!action.target_id) throw new Error('Guest request action is missing its target record.');
     const { data, error } = await from('guest_requests')
       .update({ status: 'escalated', updated_at: new Date().toISOString() })
-      .eq('id', action.target_id)
-      .select('id,status,guest_name,request_type')
-      .single();
+      .eq('id', action.target_id).select('id,status,guest_name,request_type').single();
     if (error) throw error;
 
     notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${data.guest_name || 'Guest'} · ${data.request_type || 'Request'}`);
@@ -115,42 +114,47 @@ export default function ResortOperatorPage() {
   const [briefType, setBriefType] = useState<BriefType>('morning');
   const [question, setQuestion] = useState('What needs my attention right now?');
   const [result, setResult] = useState<CoordinatorResult | null>(null);
+  const [fullResult, setFullResult] = useState<FullLoopResult | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [actions, setActions] = useState<AgentAction[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(ACTIONS_KEY) || '[]');
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(localStorage.getItem(ACTIONS_KEY) || '[]'); } catch { return []; }
   });
 
-  useEffect(() => {
-    localStorage.setItem(ACTIONS_KEY, JSON.stringify(actions.slice(0, 100)));
-  }, [actions]);
+  useEffect(() => localStorage.setItem(ACTIONS_KEY, JSON.stringify(actions.slice(0, 100))), [actions]);
+
+  const recordResult = async (nextResult: CoordinatorResult, source: string) => {
+    setResult(nextResult);
+    setActions(current => [...nextResult.actions.map(action => ({ ...action, execution_result: null })), ...current]);
+    await logAudit('created', source, crypto.randomUUID(), JSON.stringify({
+      type: nextResult.type,
+      delivery: nextResult.delivery,
+      provider: nextResult.provider,
+      model: nextResult.model,
+      proposals: nextResult.actions.length,
+    }));
+  };
 
   const coordinator = useMutation({
     mutationFn: (delivery: 'preview' | 'telegram') => runCoordinator(briefType, question, delivery),
-    onSuccess: async (nextResult) => {
-      setResult(nextResult);
-      setActions(current => [
-        ...nextResult.actions.map(action => ({ ...action, execution_result: null })),
-        ...current,
-      ]);
-      await logAudit(
-        'created',
-        'ops_coordinator',
-        crypto.randomUUID(),
-        JSON.stringify({
-          type: nextResult.type,
-          delivery: nextResult.delivery,
-          provider: nextResult.provider,
-          model: nextResult.model,
-          proposals: nextResult.actions.length,
-        }),
-      );
-      toast.success(nextResult.delivery === 'telegram' ? 'Operations brief sent to managers on Telegram' : 'Live operations brief generated');
+    onSuccess: async nextResult => {
+      await recordResult(nextResult, 'ops_coordinator');
+      toast.success(nextResult.delivery === 'telegram' ? 'Operations brief sent to managers' : 'Operations brief generated');
     },
     onError: error => toast.error(error instanceof Error ? error.message : 'Operations coordinator failed'),
+  });
+
+  const fullLoop = useMutation({
+    mutationFn: () => runFullLoop(briefType, question),
+    onSuccess: async nextResult => {
+      setFullResult(nextResult);
+      await recordResult(nextResult.operations, 'full_resort_agent_loop');
+      await logAudit('created', 'agent_modules', crypto.randomUUID(), JSON.stringify({
+        concierge: nextResult.concierge,
+        reservations: nextResult.reservations,
+      }));
+      toast.success('Operations, concierge, and reservations loop completed');
+    },
+    onError: error => toast.error(error instanceof Error ? error.message : 'Full resort loop failed'),
   });
 
   const decideAction = async (action: AgentAction, decision: 'approved' | 'rejected') => {
@@ -164,11 +168,9 @@ export default function ResortOperatorPage() {
     setExecutingId(action.id);
     try {
       const execution = await executeApprovedAction(action);
-      setActions(current => current.map(item => item.id === action.id
-        ? { ...item, status: 'executed', execution_result: execution }
-        : item));
+      setActions(current => current.map(item => item.id === action.id ? { ...item, status: 'executed', execution_result: execution } : item));
       await logAudit('updated', 'resort_operator_action', action.id, JSON.stringify({ title: action.title, execution }));
-      toast.success(execution.skipped ? 'Action was already satisfied' : 'Approved action executed');
+      toast.success(execution.skipped ? 'Action already satisfied' : 'Approved action executed');
       queryClient.invalidateQueries();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Execution failed';
@@ -195,6 +197,7 @@ export default function ResortOperatorPage() {
     ['Open tabs', result.data.open_tabs.length],
     ['Unpaid', `₱${result.data.total_unpaid.toLocaleString()}`],
   ] : [], [result]);
+  const isRunning = coordinator.isPending || fullLoop.isPending;
 
   return (
     <div className="min-h-screen bg-background p-4 text-foreground md:p-8">
@@ -203,13 +206,13 @@ export default function ResortOperatorPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">KAPWA Hospitality OS</p>
             <h1 className="font-display flex items-center gap-2 text-3xl"><Bot className="h-7 w-7" />Resort Operations</h1>
-            <p className="mt-1 text-sm text-muted-foreground">One coordinator for the backoffice, operational tasks, AI analysis, and Telegram.</p>
+            <p className="mt-1 text-sm text-muted-foreground">One secure loop for operations, concierge, reservations, tasks, AI analysis, and Telegram.</p>
           </div>
           <Button variant="outline" onClick={() => navigate('/admin')}><ArrowLeft className="mr-2 h-4 w-4" />Admin</Button>
         </div>
 
         <Card>
-          <CardHeader><CardTitle>Run the resort coordinator</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Run the resort agents</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-[220px_1fr]">
               <Select value={briefType} onValueChange={(value: BriefType) => setBriefType(value)}>
@@ -223,14 +226,27 @@ export default function ResortOperatorPage() {
               <Textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask about current resort operations" />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => coordinator.mutate('preview')} disabled={coordinator.isPending || !question.trim()}>
-                {coordinator.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Generate live brief
+              <Button onClick={() => fullLoop.mutate()} disabled={isRunning || !question.trim()}>
+                {fullLoop.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                Run full resort loop
               </Button>
-              <Button variant="outline" onClick={() => coordinator.mutate('telegram')} disabled={coordinator.isPending || !question.trim()}>
-                <Send className="mr-2 h-4 w-4" />Generate and send to managers
+              <Button variant="outline" onClick={() => coordinator.mutate('preview')} disabled={isRunning || !question.trim()}>
+                {coordinator.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                Operations only
+              </Button>
+              <Button variant="outline" onClick={() => coordinator.mutate('telegram')} disabled={isRunning || !question.trim()}>
+                <Send className="mr-2 h-4 w-4" />Send brief to managers
               </Button>
             </div>
+
+            {fullResult && (
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border p-3"><p className="font-medium">Operations</p><p className="text-xs text-muted-foreground">{fullResult.operations.actions.length} proposed actions</p></div>
+                <div className="rounded-lg border p-3"><p className="font-medium">Concierge</p><p className="text-xs text-muted-foreground">{fullResult.concierge.ok ? `${fullResult.concierge.routed ?? 0} routed · ${fullResult.concierge.escalated ?? 0} escalated · ${fullResult.concierge.complaints ?? 0} complaints` : fullResult.concierge.error || 'Failed'}</p></div>
+                <div className="rounded-lg border p-3"><p className="font-medium">Reservations</p><p className="text-xs text-muted-foreground">{fullResult.reservations.ok ? `${fullResult.reservations.issues_found ?? 0} issues found` : fullResult.reservations.error || 'Failed'}</p></div>
+              </div>
+            )}
+
             {result && (
               <div className="rounded-lg border bg-muted/30 p-4">
                 <div className="mb-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -273,7 +289,7 @@ export default function ResortOperatorPage() {
 
         <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
           <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600" />
-          <p>Housekeeping creation and urgent-request escalation can execute after approval and notify the correct Telegram groups. Booking changes, prices, payments, refunds, external guest replies, and deletions remain management-controlled.</p>
+          <p>The full loop routes guest requests, creates overdue and reservations tasks, sends existing Telegram alerts, and generates management proposals. Booking changes, prices, payments, refunds, external guest replies, and deletions remain management-controlled.</p>
         </div>
       </div>
     </div>
