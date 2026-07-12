@@ -240,7 +240,7 @@ export async function runAction(supabase: any, actionType: string, payload: Reco
         if (!update.data) {
           return { action_type: actionType, status: "failed", error: "Guest request not found" };
         }
-        await audit(supabase, "action_executed", { action_type: actionType, payload, actor, record: update.data }, { table_name: "guest_requests", record_id: requestId });
+        await audit(supabase, "action_executed", { action_type: actionType, payload, actor, record: update.data }, { table_name: "guest_requests", record_id: String(requestId) });
         return { action_type: actionType, status: "executed", record: update.data };
       }
 
