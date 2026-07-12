@@ -172,6 +172,44 @@ export default function ResortOperatorPage() {
     onError: error => toast.error(error instanceof Error ? error.message : 'Full resort loop failed'),
   });
 
+  const dailyOperator = useMutation({
+    mutationFn: async () => {
+      const settings = await getRuntimeSettings();
+      if (settings) setRuntimeMode(settings.enabled ? settings.mode : 'disabled');
+
+      const health = await runtimeHealth();
+      if (settings && !health.ok) {
+        toast.warning(`Runtime degraded (${settings.mode}): ${health.error || 'unreachable'} — using deterministic brief.`);
+      }
+
+      const coord = await runCoordinator('daily', question || 'Give me the daily operator brief and next actions.', 'preview');
+
+      const deterministic = coord.brief;
+      const ai = await askOperator({
+        question: question || 'Give me the daily operator brief and next actions.',
+        snapshot: coord.data as any,
+        deterministicSummary: deterministic,
+      });
+      const merged: CoordinatorResult = ai.reply
+        ? { ...coord, brief: ai.reply, provider: ai.provider || coord.provider, model: ai.model || coord.model }
+        : coord;
+
+      // Kick a resort-operator cycle so ops_cases stays current.
+      try {
+        await supabase.functions.invoke('resort-operator', { body: { action: 'cycle' } });
+      } catch (err) {
+        console.warn('[operator] resort-operator cycle failed', err);
+      }
+      return merged;
+    },
+    onSuccess: async nextResult => {
+      await recordResult(nextResult, 'daily_resort_operator');
+      toast.success(`Daily operator ready (${nextResult.provider}${nextResult.model ? ' · ' + nextResult.model : ''})`);
+    },
+    onError: error => toast.error(error instanceof Error ? error.message : 'Daily operator failed'),
+  });
+
+
   const decideAction = async (action: AgentAction, decision: 'approved' | 'rejected') => {
     if (decision === 'rejected') {
       setActions(current => current.map(item => item.id === action.id ? { ...item, status: 'rejected' } : item));
