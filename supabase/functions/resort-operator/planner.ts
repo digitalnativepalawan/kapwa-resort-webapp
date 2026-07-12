@@ -35,20 +35,20 @@ export function plan(state: ResortState): PlannedAction[] {
   const openCaseKeys = new Set(
     state.openCases.map((c: any) => `${c.domain}:${c.source_table}:${c.source_id}`),
   );
+  const has = (domain: string, table: string, id: string) => openCaseKeys.has(`${domain}:${table}:${id}`);
 
-  // ── Flow A: guest requests (goal 1, 3, 5) ────────────────────────────────
+  // ── guest requests (goal 1, 3, 5) ────────────────────────────────────────
   for (const r of state.openGuestRequests) {
-    const key = `guest_request:guest_requests:${r.id}`;
-    if (!openCaseKeys.has(key)) {
+    if (!has("guest_request", "guest_requests", r.id)) {
       actions.push({
-        key: `case:${key}`,
-        tool: "create_task", // case creation itself; routing handled by concierge-ai loop already live
+        key: `case:guest_request:${r.id}`,
+        tool: "create_task",
         domain: "guest_request",
         priority: r.escalated_at ? "urgent" : "high",
         reason: "Goal 1/3: guest request must be tracked to completion",
         approvalRequired: false,
         verificationRule: "guest_request_completed",
-        input: { skipTask: true }, // executor opens the case only; task exists via telegram loop
+        input: { skipTask: true },
         case: {
           domain: "guest_request",
           issue_type: r.request_type || "general",
@@ -64,8 +64,6 @@ export function plan(state: ResortState): PlannedAction[] {
       });
     }
   }
-
-  // Overdue, never escalated → escalate (goal 3, 7)
   for (const r of state.overdueGuestRequests) {
     actions.push({
       key: `escalate:guest_requests:${r.id}`,
@@ -79,17 +77,16 @@ export function plan(state: ResortState): PlannedAction[] {
     });
   }
 
-  // ── Flow B: unpaid departure balances (goal 4, 10) ───────────────────────
+  // ── unpaid departure balances (goal 4, 10) ───────────────────────────────
   for (const d of state.unpaidDepartures) {
-    const key = `unpaid_balance:resort_ops_bookings:${d.booking_id}`;
-    if (!openCaseKeys.has(key)) {
+    if (!has("unpaid_balance", "resort_ops_bookings", d.booking_id)) {
       actions.push({
-        key: `case:${key}`,
+        key: `case:unpaid_balance:${d.booking_id}`,
         tool: "request_payment_action",
         domain: "unpaid_balance",
         priority: d.check_out === state.today ? "urgent" : "high",
         reason: `Goal 4: departure ${d.check_out} with unpaid balance ${d.balance}`,
-        approvalRequired: true, // goal 10: payment actions always held for approval
+        approvalRequired: true,
         verificationRule: "balance_cleared",
         input: { booking_id: d.booking_id, balance: d.balance },
         case: {
@@ -108,7 +105,152 @@ export function plan(state: ResortState): PlannedAction[] {
     }
   }
 
-  // ── Verification pass on open cases (goal: never claim done without check) ─
+  // ── housekeeping / room readiness (goal 2, 3) ────────────────────────────
+  for (const h of state.pendingHousekeeping) {
+    if (!has("housekeeping", "housekeeping_orders", h.id)) {
+      const forArrival = state.unreadyArrivals.some((a: any) => a.resort_ops_units?.name === h.unit_name);
+      actions.push({
+        key: `case:housekeeping:${h.id}`,
+        tool: "create_task",
+        domain: "housekeeping",
+        priority: forArrival ? "urgent" : "medium",
+        reason: "Goal 2: rooms must be cleaned, ready, and correctly assigned",
+        approvalRequired: false,
+        verificationRule: "housekeeping_cleaning_completed",
+        input: { skipTask: true },
+        case: {
+          domain: "housekeeping",
+          issue_type: h.status || "pending_inspection",
+          source_table: "housekeeping_orders",
+          source_id: h.id,
+          department: "housekeeping",
+          unit_label: h.unit_name,
+          risk: forArrival ? "Arrival today with unit not yet ready" : "Unit not turned over",
+          required_action: `Complete cleaning/inspection for ${h.unit_name}`,
+        } as any,
+      });
+    }
+  }
+
+  // ── maintenance (goal 2, 3) ──────────────────────────────────────────────
+  for (const t of state.maintenanceTasks) {
+    if (!has("maintenance", "resort_ops_tasks", t.id)) {
+      actions.push({
+        key: `case:maintenance:${t.id}`,
+        tool: "create_task",
+        domain: "maintenance",
+        priority: state.overdueMaintenanceTasks.some((x: any) => x.id === t.id) ? "urgent" : "medium",
+        reason: "Goal 2/3: unresolved maintenance issue can cause a service failure",
+        approvalRequired: false,
+        verificationRule: "task_completed",
+        input: { skipTask: true },
+        case: {
+          domain: "maintenance",
+          issue_type: t.category || "maintenance",
+          source_table: "resort_ops_tasks",
+          source_id: t.id,
+          department: "maintenance",
+          risk: t.description || t.title,
+          due_at: t.due_date ? `${t.due_date}T17:00:00Z` : null,
+          required_action: t.title,
+        },
+      });
+    }
+  }
+  for (const t of state.overdueMaintenanceTasks) {
+    actions.push({
+      key: `escalate:resort_ops_tasks:${t.id}`,
+      tool: "escalate_case",
+      domain: "maintenance",
+      priority: "urgent",
+      reason: "Goal 7: maintenance overdue past 24h",
+      approvalRequired: false,
+      verificationRule: "case_escalated",
+      input: { source_table: "resort_ops_tasks", source_id: t.id },
+    });
+  }
+
+  // ── reservation exceptions (goal 4) ──────────────────────────────────────
+  for (const t of state.reservationExceptionTasks) {
+    if (!has("reservation_exception", "resort_ops_tasks", t.id)) {
+      actions.push({
+        key: `case:reservation_exception:${t.id}`,
+        tool: "create_task",
+        domain: "reservation_exception",
+        priority: t.priority === "high" ? "high" : "medium",
+        reason: "Goal 4: booking inconsistency flagged by reservations-ai",
+        approvalRequired: false,
+        verificationRule: "task_completed",
+        input: { skipTask: true },
+        case: {
+          domain: "reservation_exception",
+          issue_type: t.category || "reservation",
+          source_table: "resort_ops_tasks",
+          source_id: t.id,
+          department: "reception",
+          risk: t.description || t.title,
+          due_at: t.due_date ? `${t.due_date}T17:00:00Z` : null,
+          required_action: t.title,
+        },
+      });
+    }
+  }
+
+  // ── tours & transport (goal 3) ───────────────────────────────────────────
+  for (const tour of state.unconfirmedTours) {
+    if (!has("tour", "tour_bookings", tour.id)) {
+      const urgent = tour.tour_date === state.today;
+      actions.push({
+        key: `case:tour:${tour.id}`,
+        tool: "create_task",
+        domain: "tour",
+        priority: urgent ? "urgent" : "medium",
+        reason: "Goal 3: unconfirmed tour risks a missed departure",
+        approvalRequired: false,
+        verificationRule: "tour_confirmed",
+        input: { skipTask: true },
+        case: {
+          domain: "tour",
+          issue_type: tour.tour_name || "tour",
+          source_table: "tour_bookings",
+          source_id: tour.id,
+          booking_id: tour.booking_id,
+          guest_name: tour.guest_name ?? "",
+          department: "tours",
+          risk: `Tour on ${tour.tour_date} missing captain/guide confirmation`,
+          due_at: `${tour.tour_date}T06:00:00Z`,
+          required_action: `Confirm captain and guide for ${tour.tour_name} (${tour.guest_name})`,
+        },
+      });
+    }
+  }
+
+  // ── F&B stuck orders (goal 1, 3) ─────────────────────────────────────────
+  for (const o of state.stuckOrders) {
+    if (!has("fnb", "orders", o.id)) {
+      actions.push({
+        key: `case:fnb:${o.id}`,
+        tool: "create_task",
+        domain: "fnb",
+        priority: "high",
+        reason: "Goal 1/3: order stuck past normal service time",
+        approvalRequired: false,
+        verificationRule: "order_closed",
+        input: { skipTask: true },
+        case: {
+          domain: "fnb",
+          issue_type: o.order_type || "order",
+          source_table: "orders",
+          source_id: o.id,
+          department: "kitchen",
+          risk: `Order open since ${o.created_at}, status ${o.status}`,
+          required_action: `Resolve stuck order (${o.order_type}, ${o.location_detail || "no location"})`,
+        },
+      });
+    }
+  }
+
+  // ── verification pass on open cases ──────────────────────────────────────
   for (const c of state.openCases) {
     if (c.status === "escalated" || c.status === "pending_approval") continue;
     actions.push({

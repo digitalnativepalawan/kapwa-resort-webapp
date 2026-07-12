@@ -48,10 +48,30 @@ const VERIFIERS: Record<string, (supabase: any, c: any) => Promise<{ ok: boolean
       .select("id, status").eq("id", c.source_id).maybeSingle();
     return { ok: !!data, evidence: { order: data } };
   },
+  housekeeping_cleaning_completed: async (supabase, c) => {
+    const { data } = await supabase.from("housekeeping_orders")
+      .select("id, status, cleaning_completed_at").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data?.cleaning_completed_at, evidence: { order: data } };
+  },
   task_exists: async (supabase, c) => {
     const { data } = await supabase.from("resort_ops_tasks")
       .select("id, status").eq("id", c.source_id).maybeSingle();
     return { ok: !!data, evidence: { task: data } };
+  },
+  task_completed: async (supabase, c) => {
+    const { data } = await supabase.from("resort_ops_tasks")
+      .select("id, status").eq("id", c.source_id).maybeSingle();
+    return { ok: data?.status === "completed", evidence: { task: data } };
+  },
+  tour_confirmed: async (supabase, c) => {
+    const { data } = await supabase.from("tour_bookings")
+      .select("id, captain_confirmed, guide_confirmed").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data?.captain_confirmed && !!data?.guide_confirmed, evidence: { tour: data } };
+  },
+  order_closed: async (supabase, c) => {
+    const { data } = await supabase.from("orders")
+      .select("id, status").eq("id", c.source_id).maybeSingle();
+    return { ok: !!data && ["Completed", "Paid", "Cancelled"].includes(data.status), evidence: { order: data } };
   },
 };
 
