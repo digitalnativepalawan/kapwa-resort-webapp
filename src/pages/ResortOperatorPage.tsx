@@ -124,9 +124,16 @@ export default function ResortOperatorPage() {
   const [result, setResult] = useState<CoordinatorResult | null>(null);
   const [fullResult, setFullResult] = useState<FullLoopResult | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
+  const [runtimeMode, setRuntimeMode] = useState<string | null>(null);
   const [actions, setActions] = useState<AgentAction[]>(() => {
     try { return JSON.parse(localStorage.getItem(ACTIONS_KEY) || '[]'); } catch { return []; }
   });
+
+  useEffect(() => {
+    if (!isRuntimeConfigured()) return;
+    getRuntimeSettings().then(s => { if (s) setRuntimeMode(s.enabled ? s.mode : 'disabled'); }).catch(() => {});
+  }, []);
+
 
   useEffect(() => localStorage.setItem(ACTIONS_KEY, JSON.stringify(actions.slice(0, 100))), [actions]);
 
