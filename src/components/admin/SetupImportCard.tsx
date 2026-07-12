@@ -108,16 +108,25 @@ const SetupImportCard = () => {
         if (!parsed.length) { results.push({ table, count: 0 }); continue; }
         const rows = parsed.map(coerceRow);
 
-        const { error } = await (supabase.from(table as any) as any).upsert(rows, {
-          onConflict: 'id',
-          ignoreDuplicates: false,
-        });
+        // Delete existing rows then insert — avoids "No suitable key or wrong key type"
+        // for tables whose PK isn't `id` (singletons, composite keys, etc.).
+        const del = await (supabase.from(table as any) as any).delete().not('id', 'is', null);
+        if (del.error) {
+          const del2 = await (supabase.from(table as any) as any).delete().gte('created_at', '1900-01-01');
+          if (del2.error) {
+            results.push({ table, count: 0, error: `delete: ${del2.error.message}` });
+            continue;
+          }
+        }
+
+        const { error } = await (supabase.from(table as any) as any).insert(rows);
 
         if (error) {
           results.push({ table, count: 0, error: error.message });
         } else {
           results.push({ table, count: rows.length });
         }
+
       }
 
       const failed = results.filter((r) => r.error);
