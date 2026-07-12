@@ -4,17 +4,19 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { logAudit } from '@/lib/auditLog';
 import { notifyTelegram } from '@/lib/telegram';
+import { askOperator, getRuntimeSettings, runtimeHealth, isRuntimeConfigured } from '@/lib/agentRuntime';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Bot, Check, Loader2, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Bot, Check, Loader2, Play, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
 import OpsCasesPanel from '@/components/admin/OpsCasesPanel';
 import { toast } from 'sonner';
 
 const from = (table: string) => supabase.from(table as any);
 const ACTIONS_KEY = 'kapwa_resort_operator_actions';
+
 
 type BriefType = 'morning' | 'evening' | 'daily';
 type ActionStatus = 'proposed' | 'approved' | 'rejected' | 'executed' | 'failed';
