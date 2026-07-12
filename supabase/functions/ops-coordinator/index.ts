@@ -53,7 +53,7 @@ function isAdminRequest(req: Request): boolean {
 
 async function callModel(prompt: string, maxTokens = 700): Promise<string> {
   const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
+  if (!apiKey) throw new Error("model_unavailable"); // handled by caller -> deterministic fallback
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -80,6 +80,7 @@ async function callModel(prompt: string, maxTokens = 700): Promise<string> {
   if (!reply) throw new Error("OpenRouter returned an empty operations brief");
   return reply;
 }
+
 
 async function sendTelegram(supabase: any, group: string, message: string) {
   const { error } = await supabase.functions.invoke("send-telegram", {
