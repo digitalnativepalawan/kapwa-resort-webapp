@@ -1,0 +1,165 @@
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, Bot, Check, ClipboardCheck, Loader2, RefreshCw, ShieldAlert, X } from 'lucide-react';
+import { toast } from 'sonner';
+
+const from = (table: string) => supabase.from(table as any);
+const manilaDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+
+type ProposedAction = {
+  action_type: string;
+  title: string;
+  description: string;
+  target_table?: string;
+  target_id?: string;
+  payload?: Record<string, unknown>;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+};
+
+async function loadSnapshot() {
+  const today = manilaDate();
+  const [bookings, units, housekeeping, requests, disputes, tours, orders] = await Promise.all([
+    from('resort_ops_bookings').select('*, resort_ops_guests(*)').lte('check_in', today).gte('check_out', today),
+    from('units').select('*').eq('active', true).order('unit_name'),
+    from('housekeeping_orders').select('*').neq('status', 'completed').order('created_at', { ascending: false }),
+    from('guest_requests').select('*').not('status', 'in', '(completed,cancelled)').order('created_at', { ascending: false }).limit(50),
+    from('bill_disputes').select('*').eq('status', 'open').order('created_at', { ascending: false }),
+    from('guest_tours').select('*').eq('tour_date', today).order('pickup_time'),
+    from('orders').select('*').in('status', ['pending', 'preparing']).order('created_at', { ascending: false }).limit(50),
+  ]);
+
+  const firstError = [bookings, units, housekeeping, requests, disputes, tours, orders].find(result => result.error)?.error;
+  if (firstError) throw firstError;
+
+  return {
+    today,
+    bookings: bookings.data || [],
+    units: units.data || [],
+    housekeeping: housekeeping.data || [],
+    requests: requests.data || [],
+    disputes: disputes.data || [],
+    tours: tours.data || [],
+    orders: orders.data || [],
+  };
+}
+
+function buildBrief(snapshot: Awaited<ReturnType<typeof loadSnapshot>>) {
+  const arrivals = snapshot.bookings.filter((b: any) => b.check_in === snapshot.today);
+  const departures = snapshot.bookings.filter((b: any) => b.check_out === snapshot.today);
+  const dirtyRooms = snapshot.units.filter((u: any) => ['to_clean', 'dirty'].includes(String(u.status).toLowerCase()));
+  const urgentRequests = snapshot.requests.filter((r: any) => ['urgent', 'high'].includes(String(r.priority).toLowerCase()));
+
+  const actions: ProposedAction[] = [];
+  dirtyRooms.forEach((unit: any) => {
+    const hasOpenTask = snapshot.housekeeping.some((task: any) => task.unit_name === unit.unit_name);
+    if (!hasOpenTask) actions.push({
+      action_type: 'create_housekeeping_task',
+      title: `Create cleaning task for ${unit.unit_name}`,
+      description: 'Room is marked for cleaning but has no active housekeeping order.',
+      target_table: 'units',
+      target_id: unit.id,
+      payload: { unit_name: unit.unit_name, status: 'pending', priority: 'high', notes: 'Created by KAPWA Resort Operator' },
+      risk_level: 'low',
+    });
+  });
+  urgentRequests.forEach((request: any) => actions.push({
+    action_type: 'escalate_guest_request',
+    title: `Escalate guest request${request.unit_name ? ` for ${request.unit_name}` : ''}`,
+    description: request.description || request.request_type || 'Urgent guest request requires staff attention.',
+    target_table: 'guest_requests',
+    target_id: request.id,
+    payload: { status: 'escalated' },
+    risk_level: 'medium',
+  }));
+  snapshot.disputes.forEach((dispute: any) => actions.push({
+    action_type: 'review_bill_dispute',
+    title: 'Review open bill dispute',
+    description: dispute.reason || dispute.notes || 'An unresolved billing dispute needs management review.',
+    target_table: 'bill_disputes',
+    target_id: dispute.id,
+    payload: {},
+    risk_level: 'high',
+  }));
+
+  const lines = [
+    `${arrivals.length} arrival${arrivals.length === 1 ? '' : 's'} and ${departures.length} departure${departures.length === 1 ? '' : 's'} today.`,
+    `${dirtyRooms.length} room${dirtyRooms.length === 1 ? '' : 's'} need cleaning; ${snapshot.housekeeping.length} housekeeping task${snapshot.housekeeping.length === 1 ? '' : 's'} remain open.`,
+    `${snapshot.requests.length} guest request${snapshot.requests.length === 1 ? '' : 's'}, ${snapshot.disputes.length} open billing dispute${snapshot.disputes.length === 1 ? '' : 's'}, and ${snapshot.orders.length} active F&B order${snapshot.orders.length === 1 ? '' : 's'}.`,
+    `${snapshot.tours.length} tour movement${snapshot.tours.length === 1 ? '' : 's'} scheduled today.`,
+  ];
+
+  return { summary: lines.join(' '), actions, metrics: { arrivals: arrivals.length, departures: departures.length, dirtyRooms: dirtyRooms.length, openHousekeeping: snapshot.housekeeping.length, guestRequests: snapshot.requests.length, disputes: snapshot.disputes.length, activeOrders: snapshot.orders.length, tours: snapshot.tours.length } };
+}
+
+export default function ResortOperatorPage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [question, setQuestion] = useState('What needs my attention today?');
+  const [lastAnswer, setLastAnswer] = useState<string | null>(null);
+
+  const snapshotQuery = useQuery({ queryKey: ['resort-operator-snapshot'], queryFn: loadSnapshot, refetchInterval: 15000 });
+  const brief = useMemo(() => snapshotQuery.data ? buildBrief(snapshotQuery.data) : null, [snapshotQuery.data]);
+  const actionsQuery = useQuery({
+    queryKey: ['agent-actions'],
+    queryFn: async () => {
+      const { data, error } = await from('agent_actions').select('*').order('created_at', { ascending: false }).limit(50);
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const runOperator = useMutation({
+    mutationFn: async () => {
+      if (!snapshotQuery.data || !brief) throw new Error('Operational data is not ready.');
+      const { data: run, error: runError } = await from('agent_runs').insert({
+        agent_type: 'resort_operator', trigger_type: 'manual', requested_by: 'admin', prompt: question,
+        status: 'completed', summary: brief.summary, input_snapshot: snapshotQuery.data,
+        output: { summary: brief.summary, metrics: brief.metrics, proposed_actions: brief.actions }, completed_at: new Date().toISOString(),
+      }).select('*').single();
+      if (runError) throw runError;
+      if (brief.actions.length) {
+        const { error } = await from('agent_actions').insert(brief.actions.map(action => ({ ...action, run_id: run.id, payload: action.payload || {}, approval_required: true, status: 'proposed' })));
+        if (error) throw error;
+      }
+      return brief;
+    },
+    onSuccess: result => {
+      setLastAnswer(result.summary);
+      qc.invalidateQueries({ queryKey: ['agent-actions'] });
+      toast.success(`${result.actions.length} controlled action proposal${result.actions.length === 1 ? '' : 's'} created`);
+    },
+    onError: error => toast.error(error instanceof Error ? error.message : 'Operator run failed'),
+  });
+
+  const decideAction = async (id: string, decision: 'approved' | 'rejected') => {
+    const { error } = await from('agent_actions').update({ status: decision, approved_by: 'admin', approved_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) return toast.error(error.message);
+    qc.invalidateQueries({ queryKey: ['agent-actions'] });
+    toast.success(decision === 'approved' ? 'Action approved for execution' : 'Action rejected');
+  };
+
+  const pending = (actionsQuery.data || []).filter((action: any) => action.status === 'proposed');
+
+  return <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
+    <div className="max-w-6xl mx-auto space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">KAPWA Hospitality OS</p><h1 className="font-display text-3xl flex items-center gap-2"><Bot className="w-7 h-7" />Resort Operator</h1><p className="text-sm text-muted-foreground mt-1">Reads live operations, identifies risks, and proposes controlled actions.</p></div>
+        <div className="flex gap-2"><Button variant="outline" onClick={() => snapshotQuery.refetch()} disabled={snapshotQuery.isFetching}><RefreshCw className={`w-4 h-4 mr-2 ${snapshotQuery.isFetching ? 'animate-spin' : ''}`} />Refresh</Button><Button variant="outline" onClick={() => navigate('/admin')}><ArrowLeft className="w-4 h-4 mr-2" />Admin</Button></div>
+      </div>
+
+      {brief && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(brief.metrics).map(([key, value]) => <Card key={key}><CardContent className="p-4"><p className="text-2xl font-semibold">{value}</p><p className="text-xs text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1')}</p></CardContent></Card>)}</div>}
+
+      <Card><CardHeader><CardTitle>Ask the operator</CardTitle></CardHeader><CardContent className="space-y-3"><Textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="What needs attention today?" /><Button onClick={() => runOperator.mutate()} disabled={runOperator.isPending || !brief}>{runOperator.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ClipboardCheck className="w-4 h-4 mr-2" />}Run operations loop</Button>{lastAnswer && <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm leading-relaxed">{lastAnswer}</div>}</CardContent></Card>
+
+      <Card><CardHeader><CardTitle className="flex items-center justify-between"><span>Approval queue</span><Badge variant={pending.length ? 'destructive' : 'secondary'}>{pending.length} pending</Badge></CardTitle></CardHeader><CardContent className="space-y-3">{pending.length === 0 ? <p className="text-sm text-muted-foreground">No proposed actions are waiting for approval.</p> : pending.map((action: any) => <div key={action.id} className="rounded-lg border border-border p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"><div className="space-y-1"><div className="flex items-center gap-2"><p className="font-medium">{action.title}</p><Badge variant="outline">{action.risk_level}</Badge></div><p className="text-sm text-muted-foreground">{action.description}</p></div><div className="flex gap-2"><Button size="sm" onClick={() => decideAction(action.id, 'approved')}><Check className="w-4 h-4 mr-1" />Approve</Button><Button size="sm" variant="outline" onClick={() => decideAction(action.id, 'rejected')}><X className="w-4 h-4 mr-1" />Reject</Button></div></div>)}</CardContent></Card>
+
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 flex gap-3 text-sm"><ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" /><p>Approved actions are staged but not automatically executed yet. Booking changes, payments, refunds, outbound messages, pricing, and deletions remain blocked until their individual executors are added and tested.</p></div>
+    </div>
+  </div>;
+}
