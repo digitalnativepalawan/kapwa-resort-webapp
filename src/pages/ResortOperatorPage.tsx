@@ -102,8 +102,9 @@ async function executeApprovedAction(action: AgentAction) {
       .eq('id', action.target_id).select('id,status,guest_name,request_type').single();
     if (error) throw error;
 
-    notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${data.guest_name || 'Guest'} · ${data.request_type || 'Request'}`);
-    return { updated: true, record: data };
+    const rec = data as any;
+    notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${rec?.guest_name || 'Guest'} · ${rec?.request_type || 'Request'}`);
+    return { updated: true, record: rec };
   }
 
   throw new Error('This action requires manual management execution.');
