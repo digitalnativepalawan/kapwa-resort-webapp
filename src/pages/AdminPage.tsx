@@ -13,6 +13,7 @@ import StaffNavBar from '@/components/StaffNavBar';
 import MenuBulkImportModal from '@/components/admin/MenuBulkImportModal';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
 import SetupExportCard from '@/components/admin/SetupExportCard';
+import SetupImportCard from '@/components/admin/SetupImportCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
