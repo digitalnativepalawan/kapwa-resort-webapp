@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Bot, Check, Loader2, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
 import OpsCasesPanel from '@/components/admin/OpsCasesPanel';
@@ -15,6 +16,8 @@ import { toast } from 'sonner';
 
 const from = (table: string) => supabase.from(table as any);
 const ACTIONS_KEY = 'kapwa_resort_operator_actions';
+const ADMIN_TOKEN_KEY = 'kapwa_agent_admin_token';
+const AGENT_RUNTIME_URL = import.meta.env.VITE_AGENT_RUNTIME_URL || 'http://localhost:3000/api';
 
 type BriefType = 'morning' | 'evening' | 'daily';
 type ActionStatus = 'proposed' | 'approved' | 'rejected' | 'executed' | 'failed';
@@ -28,6 +31,7 @@ type AgentAction = {
   payload?: Record<string, unknown>;
   risk_level: 'low' | 'medium' | 'high' | 'critical';
   status: ActionStatus;
+  source?: 'server' | 'coordinator';
   created_at: string;
   execution_result?: Record<string, unknown> | null;
 };
@@ -76,6 +80,55 @@ const runCoordinator = (type: BriefType, question: string, delivery: 'preview' |
 const runFullLoop = (type: BriefType, question: string) =>
   invokeFunction<FullLoopResult & { ok: boolean }>('resort-agent-loop', { type, question });
 
+type ServerOperatorResult = {
+  id: string;
+  ok: boolean;
+  date: string;
+  brief: {
+    summary: string;
+    metrics: Record<string, number>;
+    generated_at: string;
+    mode: string;
+  };
+  llm_analysis: { reply?: string; provider?: string; model?: string; error?: string } | null;
+  proposed_actions: AgentAction[];
+  snapshot_summary: Record<string, number>;
+  created_at: string;
+};
+
+async function runServerOperator(type: BriefType, question: string, adminToken: string): Promise<ServerOperatorResult> {
+  const res = await fetch(`${AGENT_RUNTIME_URL}/operator/run`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-kapwa-admin-token': adminToken,
+    },
+    body: JSON.stringify({ type, question, useLLM: true }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || 'Resort Operator run failed');
+  const data = JSON.parse(text);
+  if (data?.ok === false) throw new Error(data.error || 'Resort Operator run failed');
+  return data;
+}
+
+async function executeServerAction(action: AgentAction, adminToken: string) {
+  const res = await fetch(`${AGENT_RUNTIME_URL}/operator/execute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-kapwa-admin-token': adminToken,
+    },
+    body: JSON.stringify({
+      action,
+      actor: localStorage.getItem('emp_name') || 'admin',
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || 'Action execution failed');
+  return JSON.parse(text);
+}
+
 async function executeApprovedAction(action: AgentAction) {
   if (action.action_type === 'create_housekeeping_task') {
     const unitName = String(action.payload?.unit_name || '').trim();
@@ -117,7 +170,11 @@ export default function ResortOperatorPage() {
   const [question, setQuestion] = useState('What needs my attention right now?');
   const [result, setResult] = useState<CoordinatorResult | null>(null);
   const [fullResult, setFullResult] = useState<FullLoopResult | null>(null);
+  const [serverResult, setServerResult] = useState<ServerOperatorResult | null>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState(() => {
+    try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; }
+  });
   const [actions, setActions] = useState<AgentAction[]>(() => {
     try { return JSON.parse(localStorage.getItem(ACTIONS_KEY) || '[]'); } catch { return []; }
   });
@@ -159,6 +216,26 @@ export default function ResortOperatorPage() {
     onError: error => toast.error(error instanceof Error ? error.message : 'Full resort loop failed'),
   });
 
+  const serverOperator = useMutation({
+    mutationFn: () => {
+      if (!adminToken.trim()) throw new Error('Agent admin token is required');
+      return runServerOperator(briefType, question, adminToken);
+    },
+    onSuccess: async data => {
+      setServerResult(data);
+      const serverActions = (data.proposed_actions || []).map(action => ({ ...action, source: 'server' as const, status: 'proposed' as const, execution_result: null }));
+      setActions(current => [...serverActions, ...current]);
+      await logAudit('created', 'resort_operator_run', data.id, JSON.stringify({
+        type: briefType,
+        actions: serverActions.length,
+        provider: data.llm_analysis?.provider || 'deterministic',
+        model: data.llm_analysis?.model || null,
+      }));
+      toast.success(`${serverActions.length} Resort Operator actions proposed`);
+    },
+    onError: error => toast.error(error instanceof Error ? error.message : 'Resort Operator run failed'),
+  });
+
   const decideAction = async (action: AgentAction, decision: 'approved' | 'rejected') => {
     if (decision === 'rejected') {
       setActions(current => current.map(item => item.id === action.id ? { ...item, status: 'rejected' } : item));
@@ -169,10 +246,13 @@ export default function ResortOperatorPage() {
 
     setExecutingId(action.id);
     try {
-      const execution = await executeApprovedAction(action);
+      const execution = action.source === 'server'
+        ? await executeServerAction(action, adminToken)
+        : await executeApprovedAction(action);
       setActions(current => current.map(item => item.id === action.id ? { ...item, status: 'executed', execution_result: execution } : item));
-      await logAudit('updated', 'resort_operator_action', action.id, JSON.stringify({ title: action.title, execution }));
-      toast.success(execution.skipped ? 'Action already satisfied' : 'Approved action executed');
+      await logAudit('updated', 'resort_operator_action', action.id, JSON.stringify({ title: action.title, source: action.source || 'coordinator', execution }));
+      const skipped = (execution as any)?.status === 'skipped' || execution?.skipped;
+      toast.success(skipped ? 'Action already satisfied' : 'Approved action executed');
       queryClient.invalidateQueries();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Execution failed';
@@ -199,7 +279,7 @@ export default function ResortOperatorPage() {
     ['Open tabs', result.data.open_tabs.length],
     ['Unpaid', `₱${result.data.total_unpaid.toLocaleString()}`],
   ] : [], [result]);
-  const isRunning = coordinator.isPending || fullLoop.isPending;
+  const isRunning = coordinator.isPending || fullLoop.isPending || serverOperator.isPending;
 
   return (
     <div className="min-h-screen bg-background p-4 text-foreground md:p-8">
@@ -228,7 +308,11 @@ export default function ResortOperatorPage() {
               <Textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask about current resort operations" />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => fullLoop.mutate()} disabled={isRunning || !question.trim()}>
+              <Button onClick={() => serverOperator.mutate()} disabled={isRunning || !question.trim() || !adminToken.trim()}>
+                {serverOperator.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                Run Daily Operator
+              </Button>
+              <Button variant="outline" onClick={() => fullLoop.mutate()} disabled={isRunning || !question.trim()}>
                 {fullLoop.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Run full resort loop
               </Button>
@@ -240,6 +324,34 @@ export default function ResortOperatorPage() {
                 <Send className="mr-2 h-4 w-4" />Send brief to managers
               </Button>
             </div>
+            <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+              <Input
+                type="password"
+                placeholder="Agent admin token (KAPWA_ADMIN_TOKEN)"
+                value={adminToken}
+                onChange={event => {
+                  setAdminToken(event.target.value);
+                  try { sessionStorage.setItem(ADMIN_TOKEN_KEY, event.target.value); } catch {}
+                }}
+              />
+              <p className="text-xs text-muted-foreground md:text-right">Stored only in this browser session.</p>
+            </div>
+
+            {serverResult && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary">{serverResult.llm_analysis?.provider || 'deterministic'}{serverResult.llm_analysis?.model ? ` · ${serverResult.llm_analysis.model}` : ''}</Badge>
+                  <span>{new Date(serverResult.created_at).toLocaleString()}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">{serverResult.brief.summary}</p>
+                {serverResult.llm_analysis?.reply && (
+                  <div className="rounded-lg border-l-2 border-primary bg-background p-3">
+                    <p className="text-xs font-medium text-muted-foreground">AI analysis</p>
+                    <p className="whitespace-pre-wrap text-sm">{serverResult.llm_analysis.reply}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {fullResult && (
               <div className="grid gap-3 md:grid-cols-3">
@@ -265,6 +377,23 @@ export default function ResortOperatorPage() {
           <Card key={String(label)}><CardContent className="p-4"><p className="text-2xl font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>
         ))}</div>}
 
+        {serverResult && (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              ['Occupancy', `${serverResult.snapshot_summary.occupied ?? 0}/${serverResult.snapshot_summary.total_units ?? 0}`],
+              ['Arrivals', serverResult.snapshot_summary.arrivals ?? 0],
+              ['Departures', serverResult.snapshot_summary.departures ?? 0],
+              ['Dirty units', serverResult.snapshot_summary.dirty ?? 0],
+              ['Open requests', serverResult.snapshot_summary.open_requests ?? 0],
+              ['Overdue requests', serverResult.snapshot_summary.overdue_requests ?? 0],
+              ['Pending tasks', serverResult.snapshot_summary.pending_tasks ?? 0],
+              ['Open cases', serverResult.snapshot_summary.open_cases ?? 0],
+            ].map(([label, value]) => (
+              <Card key={String(label)}><CardContent className="p-4"><p className="text-2xl font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>
+            ))}
+          </div>
+        )}
+
         <OpsCasesPanel />
 
         <Card>
@@ -272,7 +401,14 @@ export default function ResortOperatorPage() {
           <CardContent className="space-y-3">
             {!pending.length ? <p className="text-sm text-muted-foreground">No actions are waiting for approval.</p> : pending.map(action => (
               <div key={action.id} className="flex flex-col justify-between gap-4 rounded-lg border p-4 md:flex-row md:items-center">
-                <div><div className="flex items-center gap-2"><p className="font-medium">{action.title}</p><Badge variant="outline">{action.risk_level}</Badge></div><p className="text-sm text-muted-foreground">{action.description}</p></div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{action.title}</p>
+                    <Badge variant="outline">{action.risk_level}</Badge>
+                    {action.source === 'server' && <Badge variant="secondary">server</Badge>}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{action.description}</p>
+                </div>
                 <div className="flex gap-2">
                   <Button size="sm" disabled={executingId === action.id} onClick={() => decideAction(action, 'approved')}>{executingId === action.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}Approve</Button>
                   <Button size="sm" variant="outline" disabled={executingId === action.id} onClick={() => decideAction(action, 'rejected')}><X className="mr-1 h-4 w-4" />Reject</Button>
@@ -293,7 +429,7 @@ export default function ResortOperatorPage() {
 
         <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
           <ShieldAlert className="h-5 w-5 shrink-0 text-amber-600" />
-          <p>The full loop routes guest requests, creates overdue and reservations tasks, sends existing Telegram alerts, and generates management proposals. Booking changes, prices, payments, refunds, external guest replies, and deletions remain management-controlled.</p>
+          <p>The Daily Operator reads live Supabase data, proposes deterministic actions, optionally asks the configured AI provider for analysis, and can execute approved safe actions (housekeeping orders, escalations, tasks). Booking changes, prices, payments, refunds, external guest replies, and deletions remain management-controlled.</p>
         </div>
       </div>
     </div>

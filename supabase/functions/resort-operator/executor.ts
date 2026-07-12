@@ -16,11 +16,13 @@ export interface ExecutionResult {
   detail?: unknown;
 }
 
-async function audit(supabase: any, action: string, detail: unknown) {
+async function audit(supabase: any, action: string, detail: unknown, options: { table_name?: string; record_id?: string } = {}) {
   try {
     await supabase.from("audit_log").insert({
-      actor: "resort-operator",
+      employee_name: "resort-operator",
       action,
+      table_name: options.table_name || "ops_cases",
+      record_id: options.record_id || "",
       details: typeof detail === "string" ? detail : JSON.stringify(detail),
     });
   } catch (_) { /* audit table shape differences must not break the loop */ }
@@ -90,7 +92,7 @@ export async function execute(supabase: any, actions: PlannedAction[], maxAction
           approval_required: mustApprove,
           verification_rule: a.verificationRule,
         });
-        if (created) await audit(supabase, "case_opened", { case_id: c.id, domain: c.domain, issue: c.issue_type });
+        if (created) await audit(supabase, "case_opened", { case_id: c.id, domain: c.domain, issue: c.issue_type }, { table_name: "ops_cases", record_id: c.id });
         results.push({
           key: a.key,
           tool: a.tool,
@@ -108,14 +110,14 @@ export async function execute(supabase: any, actions: PlannedAction[], maxAction
         const { ok, evidence } = await verifier(supabase, c);
         if (ok) {
           await resolveCase(supabase, c.id, evidence);
-          await audit(supabase, "case_verified_resolved", { case_id: c.id, evidence });
+          await audit(supabase, "case_verified_resolved", { case_id: c.id, evidence }, { table_name: "ops_cases", record_id: c.id });
           results.push({ key: a.key, tool: a.tool, status: "verified_resolved", detail: { case_id: c.id } });
         } else if (c.due_at && new Date(c.due_at) < new Date() && c.status !== "escalated") {
           const retries = (c.retry_count ?? 0) + 1;
           await supabase.from("ops_cases").update({ retry_count: retries }).eq("id", c.id);
           if (retries >= 2) {
             await escalateCase(supabase, c, "verification failed past due date");
-            await audit(supabase, "case_escalated", { case_id: c.id });
+            await audit(supabase, "case_escalated", { case_id: c.id }, { table_name: "ops_cases", record_id: c.id });
             results.push({ key: a.key, tool: a.tool, status: "escalated", detail: { case_id: c.id } });
           } else {
             results.push({ key: a.key, tool: a.tool, status: "still_open", detail: { case_id: c.id, retries } });
@@ -145,7 +147,7 @@ export async function execute(supabase: any, actions: PlannedAction[], maxAction
         }
         if (c && c.status !== "escalated") {
           await escalateCase(supabase, c, "overdue SLA");
-          await audit(supabase, "case_escalated", { case_id: c.id });
+          await audit(supabase, "case_escalated", { case_id: c.id }, { table_name: "ops_cases", record_id: c.id });
           results.push({ key: a.key, tool: a.tool, status: "escalated", detail: { case_id: c.id } });
         } else {
           results.push({ key: a.key, tool: a.tool, status: "skipped" });
@@ -167,5 +169,110 @@ export async function decideCase(supabase: any, caseId: string, approve: boolean
     ? { status: "in_progress", approved_by: decidedBy, approved_at: new Date().toISOString() }
     : { status: "closed", closed_at: new Date().toISOString() };
   await appendHistory(supabase, caseId, approve ? "approved" : "rejected", { by: decidedBy }, patch);
-  await audit(supabase, approve ? "case_approved" : "case_rejected", { case_id: caseId, by: decidedBy });
+  await audit(supabase, approve ? "case_approved" : "case_rejected", { case_id: caseId, by: decidedBy }, { table_name: "ops_cases", record_id: caseId });
+}
+
+// ── Allowed action execution (called via action: "execute") ─────────────────
+const ALLOWED_EXECUTE_ACTIONS = new Set([
+  "CREATE_HOUSEKEEPING_ORDER",
+  "ESCALATE_GUEST_REQUEST",
+  "CREATE_TASK",
+]);
+
+export interface ActionResult {
+  action_type: string;
+  status: "executed" | "skipped" | "failed";
+  record?: Record<string, unknown>;
+  reason?: string;
+  error?: string;
+}
+
+export async function runAction(supabase: any, actionType: string, payload: Record<string, unknown>, actor = "operator"): Promise<ActionResult> {
+  if (!ALLOWED_EXECUTE_ACTIONS.has(actionType)) {
+    return { action_type: actionType, status: "failed", error: "Action not in allow-list" };
+  }
+
+  try {
+    switch (actionType) {
+      case "CREATE_HOUSEKEEPING_ORDER": {
+        const unitId = payload.unit_id;
+        const unitName = String(payload.unit_name || "").trim();
+        if (!unitId && !unitName) {
+          return { action_type: actionType, status: "failed", error: "unit_id or unit_name required" };
+        }
+        let existingQuery = supabase
+          .from("housekeeping_orders")
+          .select("id")
+          .not("status", "in", "(completed,cancelled)");
+        if (unitName) {
+          existingQuery = existingQuery.eq("unit_name", unitName);
+        }
+        const existing = await existingQuery.maybeSingle();
+        if (existing.data) {
+          return { action_type: actionType, status: "skipped", reason: "Active housekeeping order already exists" };
+        }
+        const insert = await supabase
+          .from("housekeeping_orders")
+          .insert({
+            unit_name: unitName || String(unitId),
+            status: "pending_inspection",
+            cleaning_notes: "Created by KAPWA Resort Operator",
+          })
+          .select("*")
+          .single();
+        if (insert.error) throw insert.error;
+        await audit(supabase, "action_executed", { action_type: actionType, payload, actor, record: insert.data }, { table_name: "housekeeping_orders", record_id: insert.data.id });
+        return { action_type: actionType, status: "executed", record: insert.data };
+      }
+
+      case "ESCALATE_GUEST_REQUEST": {
+        const requestId = payload.request_id;
+        if (!requestId) {
+          return { action_type: actionType, status: "failed", error: "request_id required" };
+        }
+        const update = await supabase
+          .from("guest_requests")
+          .update({ status: "escalated", escalated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+          .eq("id", requestId)
+          .select("*")
+          .single();
+        if (update.error) throw update.error;
+        if (!update.data) {
+          return { action_type: actionType, status: "failed", error: "Guest request not found" };
+        }
+        await audit(supabase, "action_executed", { action_type: actionType, payload, actor, record: update.data }, { table_name: "guest_requests", record_id: requestId });
+        return { action_type: actionType, status: "executed", record: update.data };
+      }
+
+      case "CREATE_TASK": {
+        const title = String(payload.title || "").trim();
+        if (!title) {
+          return { action_type: actionType, status: "failed", error: "title required" };
+        }
+        const dueDate = payload.due_date || new Date().toISOString().slice(0, 10);
+        const insert = await supabase
+          .from("resort_ops_tasks")
+          .insert({
+            title,
+            description: String(payload.description || ""),
+            category: payload.category || "operator",
+            priority: payload.priority || "medium",
+            status: "pending",
+            due_date: dueDate,
+          })
+          .select("*")
+          .single();
+        if (insert.error) throw insert.error;
+        await audit(supabase, "action_executed", { action_type: actionType, payload, actor, record: insert.data }, { table_name: "resort_ops_tasks", record_id: insert.data.id });
+        return { action_type: actionType, status: "executed", record: insert.data };
+      }
+
+      default:
+        return { action_type: actionType, status: "failed", error: "Unhandled action" };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await audit(supabase, "action_failed", { action_type: actionType, payload, actor, error: message }, { table_name: "ops_cases", record_id: String(payload.request_id || payload.unit_id || payload.task_id || "") });
+    return { action_type: actionType, status: "failed", error: message };
+  }
 }

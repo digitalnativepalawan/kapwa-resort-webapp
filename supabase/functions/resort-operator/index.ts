@@ -10,11 +10,12 @@
 //   { action: "cycle" }                                  run one full loop cycle
 //   { action: "state" }                                  return unified state only
 //   { action: "decide", case_id, approve, decided_by }   approve/reject a pending case
+//   { action: "execute", action_type, payload, actor }  execute an allowed action directly
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadResortState } from "./state.ts";
 import { plan } from "./planner.ts";
-import { execute, decideCase } from "./executor.ts";
+import { execute, decideCase, runAction } from "./executor.ts";
 import { TOOLS, DOMAINS } from "./system-map.ts";
 
 const corsHeaders = {
@@ -75,6 +76,15 @@ Deno.serve(async (req) => {
       if (!body.case_id) return respond({ ok: false, error: "case_id required" }, 400);
       await decideCase(supabase, body.case_id, body.approve === true, body.decided_by ?? "admin");
       return respond({ ok: true, case_id: body.case_id, approved: body.approve === true });
+    }
+
+    if (action === "execute") {
+      const { action_type, payload, actor } = body;
+      if (!action_type || !payload) {
+        return respond({ ok: false, error: "action_type and payload required" }, 400);
+      }
+      const result = await runAction(supabase, String(action_type), payload, String(actor || "operator"));
+      return respond({ ok: true, result });
     }
 
     const state = await loadResortState(supabase);

@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { mkdir, readFile, rename, writeFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { encryptSecret, decryptSecret, runConfiguredModel } from './lib/model-runtime.js';
+import { createResortOperatorAgent } from './agent/resort-operator.js';
 
 const app = express();
 app.use(cors());
@@ -36,34 +37,6 @@ function requireAdmin(req, res, next) {
   if (!expected) return res.status(503).json({ error: 'KAPWA_ADMIN_TOKEN is not configured.' });
   if (req.header('x-kapwa-admin-token') !== expected) return res.status(401).json({ error: 'Invalid admin token.' });
   return next();
-}
-
-function encryptionKey() {
-  const raw = process.env.KAPWA_SETTINGS_ENCRYPTION_KEY || '';
-  if (!raw) throw new Error('KAPWA_SETTINGS_ENCRYPTION_KEY is not configured.');
-  const key = Buffer.from(raw, 'base64');
-  if (key.length !== 32) throw new Error('KAPWA_SETTINGS_ENCRYPTION_KEY must be a base64-encoded 32-byte key.');
-  return key;
-}
-
-function encryptSecret(value) {
-  if (!value) return '';
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]).toString('base64');
-}
-
-function decryptSecret(value) {
-  if (!value) return '';
-  const payload = Buffer.from(value, 'base64');
-  const iv = payload.subarray(0, 12);
-  const tag = payload.subarray(12, 28);
-  const ciphertext = payload.subarray(28);
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
 async function loadRuntimeSettings() {
@@ -133,56 +106,6 @@ function findMemoryAnswer(message, memory) {
     if (keywords.some(keyword => normalizedMessage.includes(keyword))) return String(item.answer).trim();
   }
   return null;
-}
-
-async function askOllama(settings, messages) {
-  const baseUrl = String(settings.ollamaBaseUrl || DEFAULT_OLLAMA_URL).replace(/\/$/, '');
-  const model = settings.ollamaModel || DEFAULT_OLLAMA_MODEL;
-  const response = await fetch(`${baseUrl}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: false,
-      keep_alive: '30m',
-      options: { temperature: settings.temperature, num_predict: settings.maxTokens },
-    }),
-  });
-  if (!response.ok) throw new Error(`Ollama ${model} returned ${response.status}: ${await response.text()}`);
-  const data = await response.json();
-  const reply = data?.message?.content?.trim();
-  if (!reply) throw new Error(`Ollama ${model} returned an empty response.`);
-  return { reply, provider: 'ollama', model };
-}
-
-async function askOpenRouter(settings, messages) {
-  const apiKey = decryptSecret(settings.openrouterKeyEncrypted);
-  if (!apiKey) throw new Error('OpenRouter is not configured.');
-  const model = settings.openrouterModel || DEFAULT_OPENROUTER_MODEL;
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.KAPWA_APP_URL || 'http://localhost:5173',
-      'X-Title': 'KAPWA Hospitality OS',
-    },
-    body: JSON.stringify({ model, messages, temperature: settings.temperature, max_tokens: settings.maxTokens }),
-  });
-  if (!response.ok) throw new Error(`OpenRouter returned ${response.status}: ${await response.text()}`);
-  const data = await response.json();
-  const reply = data?.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error(`OpenRouter ${model} returned an empty response.`);
-  return { reply, provider: 'openrouter', model };
-}
-
-async function runConfiguredModel(settings, messages) {
-  if (!settings.enabled) throw new Error('The KAPWA agent runtime is disabled.');
-  const provider = settings.mode === 'hermes' ? settings.hermesProvider : settings.mode;
-  if (provider === 'openrouter') return askOpenRouter(settings, messages);
-  if (provider === 'ollama') return askOllama(settings, messages);
-  throw new Error(`Unsupported provider: ${provider}`);
 }
 
 app.get('/api/runtime/settings', requireAdmin, async (_req, res) => {
@@ -300,6 +223,59 @@ app.post('/api/operator/chat', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('[agent] operator chat error:', error?.message || error);
     return res.status(503).json({ error: error?.message || 'The configured AI runtime is unavailable.' });
+  }
+});
+
+// ── Resort Operator agentic runtime ─────────────────────────────────────────
+const operatorAgent = createResortOperatorAgent({ runConfiguredModel });
+
+app.get('/api/operator/status', requireAdmin, async (_req, res) => {
+  try {
+    const settings = await loadRuntimeSettings();
+    return res.json({ ok: true, settings: publicSettings(settings) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error?.message || 'Could not load operator status.' });
+  }
+});
+
+app.get('/api/operator/state', requireAdmin, async (_req, res) => {
+  try {
+    const state = await operatorAgent.getState();
+    return res.json({ ok: true, ...state });
+  } catch (error) {
+    console.error('[operator] state failed:', error?.message || error);
+    return res.status(500).json({ ok: false, error: error?.message || 'Could not load operator state.' });
+  }
+});
+
+app.post('/api/operator/run', requireAdmin, async (req, res) => {
+  try {
+    const settings = await loadRuntimeSettings();
+    const body = req.body || {};
+    const run = await operatorAgent.runCycle(settings, {
+      useLLM: body.useLLM !== false,
+      type: body.type || 'daily',
+      question: body.question,
+      decidedBy: body.decided_by || req.header('x-kapwa-admin-user') || 'admin',
+    });
+    return res.json(run);
+  } catch (error) {
+    console.error('[operator] run failed:', error?.message || error);
+    return res.status(500).json({ ok: false, error: error?.message || 'Operator run failed.' });
+  }
+});
+
+app.post('/api/operator/execute', requireAdmin, async (req, res) => {
+  const { action, actor } = req.body || {};
+  if (!action || !action.action_type) {
+    return res.status(400).json({ ok: false, error: 'action object with action_type is required' });
+  }
+  try {
+    const result = await operatorAgent.executeAction(action, actor || req.header('x-kapwa-admin-user') || 'admin');
+    return res.json(result);
+  } catch (error) {
+    console.error('[operator] execute failed:', error?.message || error);
+    return res.status(500).json({ ok: false, error: error?.message || 'Could not execute action.' });
   }
 });
 
