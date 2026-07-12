@@ -13,6 +13,7 @@ import StaffNavBar from '@/components/StaffNavBar';
 import MenuBulkImportModal from '@/components/admin/MenuBulkImportModal';
 import ResortProfileForm from '@/components/admin/ResortProfileForm';
 import SetupExportCard from '@/components/admin/SetupExportCard';
+import SetupImportCard from '@/components/admin/SetupImportCard';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import EditableRow from '@/components/admin/EditableRow';
 import TimePicker from '@/components/admin/TimePicker';
@@ -801,6 +802,7 @@ const AdminPage = () => {
             <TabsContent value="settings" className="space-y-8">
               <div className={readOnly('setup') ? 'pointer-events-none opacity-70' : ''}>
                 <SetupExportCard />
+                <div className="mt-8"><SetupImportCard /></div>
                 <div className="mt-8"><ResortProfileForm /></div>
 
                 <section className="mt-8">
