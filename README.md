@@ -4,6 +4,14 @@
 
 **URL**: https://github.com/digitalnativepalawan/new-KAPWA OS-from-FABLE-5
 
+## Resort Operator
+
+The agentic resort-operations implementation is documented in:
+
+```text
+docs/RESORT_OPERATOR_SETUP.md
+```
+
 ## How can I edit this code?
 
 There are several ways of editing your application.
@@ -33,7 +41,7 @@ npm run dev
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).
-- Click on the "Edit" button (pencil icon) at the top right of the file view.
+- Click on the "Edit" button (pencil icon) at the top right.
 - Make your changes and commit the changes.
 
 **Use GitHub Codespaces**
@@ -62,7 +70,6 @@ Open the project in your deployment environment and publish via its deployment w
 
 Yes, you can!
 
-To connect a domain, follow your deployment provider's custom-domain setup flow.
+To connect a custom domain, follow your deployment provider's custom-domain setup flow.
 
 Read more here: https://docs.lovable.dev/features/custom-domain#custom-domain
-

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Send, X, Loader2, Settings } from 'lucide-react';
+import { Bot, MessageSquare, Send, X, Loader2 } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -26,7 +26,7 @@ const defaultSettings = {
 async function loadSharedBotData() {
   const [settingsResult, memoryResult] = await Promise.all([
     (supabase.from('settings') as any)
-      .select('bot_enabled, bot_base_url, bot_temperature, bot_max_tokens')
+      .select('bot_enabled, bot_base_url, bot_model, bot_temperature, bot_max_tokens')
       .limit(1)
       .maybeSingle(),
     (supabase.from('guest_faq_memory') as any)
@@ -41,6 +41,7 @@ async function loadSharedBotData() {
       ...defaultSettings,
       enabled: row?.bot_enabled !== false,
       baseUrl: row?.bot_base_url || defaultSettings.baseUrl,
+      model: row?.bot_model || defaultSettings.model,
       temperature: Number(row?.bot_temperature ?? defaultSettings.temperature),
       maxTokens: Number(row?.bot_max_tokens ?? defaultSettings.maxTokens),
     },
@@ -90,14 +91,14 @@ export default function AgentChatPanel() {
 
       setMessages(current => [...current, {
         role: 'assistant',
-        content: data.reply || 'No response from Hermes.',
+        content: data.reply || 'No response from the guest concierge.',
         timestamp: new Date(),
       }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
         role: 'assistant',
-        content: `Hermes is unavailable: ${message}. Make sure Hermes, Ollama, and qwen2.5:3b are running on the local computer.`,
+        content: `Guest concierge unavailable: ${message}. Check the configured model service in Admin settings.`,
         timestamp: new Date(),
       }]);
     } finally {
@@ -108,8 +109,8 @@ export default function AgentChatPanel() {
   return (
     <>
       {isAdminPage && (
-        <Button onClick={() => { window.location.href = '/admin/bot-settings'; }} variant="outline" className="fixed bottom-6 right-24 z-50 h-14 rounded-full shadow-lg px-4 bg-card">
-          <Settings className="w-5 h-5 mr-2" />Local Hermes
+        <Button onClick={() => { window.location.href = '/admin/operator'; }} variant="outline" className="fixed bottom-6 right-24 z-50 h-14 rounded-full shadow-lg px-4 bg-card">
+          <Bot className="w-5 h-5 mr-2" />Resort Operator
         </Button>
       )}
 
@@ -131,7 +132,7 @@ export default function AgentChatPanel() {
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground font-body text-sm gap-2">
                 <MessageSquare className="w-10 h-10 opacity-40" />
                 <p>How may we help with your stay?</p>
-                <p className="text-xs opacity-60">Powered locally by Hermes, Ollama, and qwen2.5:3b.</p>
+                <p className="text-xs opacity-60">Uses the model selected in Admin settings.</p>
               </div>
             )}
             <div className="space-y-3">
