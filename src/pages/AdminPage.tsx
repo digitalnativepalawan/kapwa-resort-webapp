@@ -802,6 +802,7 @@ const AdminPage = () => {
             <TabsContent value="settings" className="space-y-8">
               <div className={readOnly('setup') ? 'pointer-events-none opacity-70' : ''}>
                 <SetupExportCard />
+                <div className="mt-8"><SetupImportCard /></div>
                 <div className="mt-8"><ResortProfileForm /></div>
 
                 <section className="mt-8">
