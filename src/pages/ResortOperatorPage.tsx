@@ -250,7 +250,7 @@ export default function ResortOperatorPage() {
     ['Open tabs', result.data.open_tabs.length],
     ['Unpaid', `₱${result.data.total_unpaid.toLocaleString()}`],
   ] : [], [result]);
-  const isRunning = coordinator.isPending || fullLoop.isPending;
+  const isRunning = coordinator.isPending || fullLoop.isPending || dailyOperator.isPending;
 
   return (
     <div className="min-h-screen bg-background p-4 text-foreground md:p-8">
