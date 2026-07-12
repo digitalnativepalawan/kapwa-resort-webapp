@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     const supabase = sb();
     const { data: request, error: readError } = await supabase
       .from("guest_requests")
-      .select("id,guest_name,request_type,details,status,assigned_to,routed_group")
+      .select("id,guest_name,request_type,details,status,assigned_to,assigned_at,routed_group")
       .eq("id", requestId)
       .single();
     if (readError || !request) throw readError || new Error("Guest request not found");
