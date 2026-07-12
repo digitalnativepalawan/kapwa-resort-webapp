@@ -40,7 +40,17 @@ function decodeJwtPayload(token: string): Record<string, any> | null {
 
 function isAuthorized(req: Request): boolean {
   const internal = req.headers.get("x-internal-secret");
-  if (internal && internal === (Deno.env.get("INTERNAL_FN_SECRET") ?? "")) return true;
+  const stored = Deno.env.get("INTERNAL_FN_SECRET") ?? "";
+  if (internal) {
+    // Diagnostic (no secret contents in logs, only lengths + match flag).
+    console.log(JSON.stringify({
+      diag: "internal-secret-check",
+      header_len: internal.length,
+      stored_len: stored.length,
+      match: internal === stored,
+    }));
+  }
+  if (internal && stored && internal === stored) return true;
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   const payload = token ? decodeJwtPayload(token) : null;
