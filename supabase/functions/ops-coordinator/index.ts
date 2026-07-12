@@ -53,7 +53,7 @@ function isAdminRequest(req: Request): boolean {
 
 async function callModel(prompt: string, maxTokens = 700): Promise<string> {
   const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
+  if (!apiKey) throw new Error("model_unavailable"); // handled by caller -> deterministic fallback
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -80,6 +80,7 @@ async function callModel(prompt: string, maxTokens = 700): Promise<string> {
   if (!reply) throw new Error("OpenRouter returned an empty operations brief");
   return reply;
 }
+
 
 async function sendTelegram(supabase: any, group: string, message: string) {
   const { error } = await supabase.functions.invoke("send-telegram", {
@@ -278,14 +279,38 @@ function buildActionProposals(data: Record<string, any>) {
       title: `Escalate ${request.request_type ?? "guest request"}${request.guest_name ? ` for ${request.guest_name}` : ""}`,
       description: request.details || "Urgent guest request needs staff attention.",
       target_id: request.id,
-      payload: { status: "escalated" },
+      payload: { guest_request_id: request.id, status: "escalated" },
       risk_level: "medium",
+      status: "proposed",
+      created_at: new Date().toISOString(),
+    });
+  }
+  // Recap overdue maintenance/ops tasks that still have no follow-up task.
+  const seenTitles = new Set<string>();
+  for (const t of (data.overdue_tasks ?? []).slice(0, 5)) {
+    const followUpTitle = `Follow up: ${t.title}`;
+    if (seenTitles.has(followUpTitle)) continue;
+    seenTitles.add(followUpTitle);
+    actions.push({
+      id: crypto.randomUUID(),
+      action_type: "create_task",
+      title: followUpTitle,
+      description: `Overdue ${t.category || "task"} (was due ${t.due_date}). Create a follow-up task so this is not lost.`,
+      target_id: t.id,
+      payload: {
+        title: followUpTitle,
+        description: `Auto-created follow-up for overdue task ${t.id} (${t.title}).`,
+        category: t.category || "operations",
+        priority: t.priority || "high",
+      },
+      risk_level: "low",
       status: "proposed",
       created_at: new Date().toISOString(),
     });
   }
   return actions;
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
