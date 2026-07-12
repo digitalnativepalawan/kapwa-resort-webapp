@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Bot, Check, Loader2, RefreshCw, Send, ShieldAlert, Sparkles, X } from 'lucide-react';
+import OpsCasesPanel from '@/components/admin/OpsCasesPanel';
 import { toast } from 'sonner';
 
 const from = (table: string) => supabase.from(table as any);
@@ -262,6 +263,8 @@ export default function ResortOperatorPage() {
         {result && <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{metrics.map(([label, value]) => (
           <Card key={String(label)}><CardContent className="p-4"><p className="text-2xl font-semibold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></CardContent></Card>
         ))}</div>}
+
+        <OpsCasesPanel />
 
         <Card>
           <CardHeader><CardTitle className="flex items-center justify-between"><span>Approval queue</span><Badge variant={pending.length ? 'destructive' : 'secondary'}>{pending.length} pending</Badge></CardTitle></CardHeader>

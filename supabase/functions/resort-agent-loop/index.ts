@@ -60,9 +60,10 @@ Deno.serve(async (req) => {
       delivery: "preview",
     });
 
-    const [conciergeRun, reservationsRun] = await Promise.allSettled([
+    const [conciergeRun, reservationsRun, operatorRun] = await Promise.allSettled([
       invokeInternal(supabase, "concierge-ai", {}),
       invokeInternal(supabase, "reservations-ai", {}),
+      invokeInternal(supabase, "resort-operator", { action: "cycle" }),
     ]);
 
     const concierge = conciergeRun.status === "fulfilled"
@@ -71,12 +72,16 @@ Deno.serve(async (req) => {
     const reservations = reservationsRun.status === "fulfilled"
       ? reservationsRun.value
       : { ok: false, error: reservationsRun.reason instanceof Error ? reservationsRun.reason.message : String(reservationsRun.reason) };
+    const operator = operatorRun.status === "fulfilled"
+      ? operatorRun.value
+      : { ok: false, error: operatorRun.reason instanceof Error ? operatorRun.reason.message : String(operatorRun.reason) };
 
     return respond({
       ok: true,
       operations,
       concierge,
       reservations,
+      operator,
       completed_at: new Date().toISOString(),
     });
   } catch (error) {

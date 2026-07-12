@@ -26,3 +26,6 @@ server/data/
 *.njsproj
 *.sln
 *.sw?
+dist/
+dist/
+graphify-out/
