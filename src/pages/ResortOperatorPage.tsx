@@ -84,7 +84,7 @@ async function executeApprovedAction(action: AgentAction) {
     const { data: existing, error: lookupError } = await from('housekeeping_orders')
       .select('id,status').eq('unit_name', unitName).not('status', 'in', '(completed,cancelled)').limit(1);
     if (lookupError) throw lookupError;
-    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: existing[0].id };
+    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: (existing[0] as any).id };
 
     const { data, error } = await from('housekeeping_orders')
       .insert({ unit_name: unitName, status: 'pending_inspection', cleaning_notes: 'Created by KAPWA Resort Operator after management approval.' })
@@ -102,8 +102,9 @@ async function executeApprovedAction(action: AgentAction) {
       .eq('id', action.target_id).select('id,status,guest_name,request_type').single();
     if (error) throw error;
 
-    notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${data.guest_name || 'Guest'} · ${data.request_type || 'Request'}`);
-    return { updated: true, record: data };
+    const rec = data as any;
+    notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${rec?.guest_name || 'Guest'} · ${rec?.request_type || 'Request'}`);
+    return { updated: true, record: rec };
   }
 
   throw new Error('This action requires manual management execution.');
