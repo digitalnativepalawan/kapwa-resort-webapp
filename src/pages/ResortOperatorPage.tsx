@@ -14,7 +14,7 @@ import { ArrowLeft, Bot, Check, Loader2, Play, RefreshCw, Send, ShieldAlert, Spa
 import OpsCasesPanel from '@/components/admin/OpsCasesPanel';
 import { toast } from 'sonner';
 
-const from = (table: string) => supabase.from(table as any);
+
 const ACTIONS_KEY = 'kapwa_resort_operator_actions';
 
 
