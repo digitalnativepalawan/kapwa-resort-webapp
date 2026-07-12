@@ -76,39 +76,43 @@ const runCoordinator = (type: BriefType, question: string, delivery: 'preview' |
 const runFullLoop = (type: BriefType, question: string) =>
   invokeFunction<FullLoopResult & { ok: boolean }>('resort-agent-loop', { type, question });
 
-async function executeApprovedAction(action: AgentAction) {
-  if (action.action_type === 'create_housekeeping_task') {
-    const unitName = String(action.payload?.unit_name || '').trim();
-    if (!unitName) throw new Error('Housekeeping action is missing a unit name.');
-
-    const { data: existing, error: lookupError } = await from('housekeeping_orders')
-      .select('id,status').eq('unit_name', unitName).not('status', 'in', '(completed,cancelled)').limit(1);
-    if (lookupError) throw lookupError;
-    if (existing?.length) return { skipped: true, reason: 'An active housekeeping order already exists.', record_id: (existing[0] as any).id };
-
-    const { data, error } = await from('housekeeping_orders')
-      .insert({ unit_name: unitName, status: 'pending_inspection', cleaning_notes: 'Created by KAPWA Resort Operator after management approval.' })
-      .select('id,status,unit_name').single();
-    if (error) throw error;
-
-    notifyTelegram('housekeeping', `<b>New housekeeping task</b>\n${unitName}\nCreated by KAPWA Resort Operator.`);
-    return { created: true, record: data };
+// Map legacy proposal shapes to the server allow-list.
+function toExecutionRequest(action: AgentAction): { action_type: string; payload: Record<string, unknown> } | null {
+  const type = String(action.action_type || '').toLowerCase();
+  const payload = action.payload || {};
+  if (type === 'create_housekeeping_task' || type === 'create_housekeeping_order') {
+    return { action_type: 'CREATE_HOUSEKEEPING_ORDER', payload: { unit_name: payload.unit_name, priority: payload.priority } };
   }
-
-  if (action.action_type === 'escalate_guest_request') {
-    if (!action.target_id) throw new Error('Guest request action is missing its target record.');
-    const { data, error } = await from('guest_requests')
-      .update({ status: 'escalated', updated_at: new Date().toISOString() })
-      .eq('id', action.target_id).select('id,status,guest_name,request_type').single();
-    if (error) throw error;
-
-    const rec = data as any;
-    notifyTelegram('reception,managers', `<b>Urgent guest request escalated</b>\n${rec?.guest_name || 'Guest'} · ${rec?.request_type || 'Request'}`);
-    return { updated: true, record: rec };
+  if (type === 'escalate_guest_request') {
+    return { action_type: 'ESCALATE_GUEST_REQUEST', payload: { guest_request_id: action.target_id || payload.guest_request_id } };
   }
-
-  throw new Error('This action requires manual management execution.');
+  if (type === 'create_task') {
+    return {
+      action_type: 'CREATE_TASK',
+      payload: {
+        title: payload.title || action.title,
+        description: payload.description || action.description,
+        category: payload.category || 'operations',
+        priority: payload.priority || 'medium',
+        due_date: payload.due_date,
+      },
+    };
+  }
+  return null;
 }
+
+async function executeApprovedAction(action: AgentAction) {
+  const request = toExecutionRequest(action);
+  if (!request) throw new Error('This action requires manual management execution.');
+  const { data, error } = await supabase.functions.invoke('resort-operator-execute', {
+    body: { ...request, source_action_id: action.id, decided_by: localStorage.getItem('emp_name') || 'admin' },
+  });
+  if (error) throw new Error(error.message || 'Execution failed');
+  const result = data as any;
+  if (!result?.ok) throw new Error(result?.error || 'Execution failed');
+  return result;
+}
+
 
 export default function ResortOperatorPage() {
   const navigate = useNavigate();
