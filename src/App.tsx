@@ -10,7 +10,6 @@ import MenuPage from "./pages/MenuPage";
 import AdminPage from "./pages/AdminPage";
 import BotSettingsPage from "./pages/BotSettingsPage";
 import ResortOperatorPage from "./pages/ResortOperatorPage";
-import AgentRuntimeSettingsPage from "./pages/AgentRuntimeSettingsPage";
 import EmployeePage from "./pages/EmployeePage";
 import EmployeePortal from "./pages/EmployeePortal";
 import KitchenPage from "./pages/KitchenPage";
@@ -55,7 +54,6 @@ const App = () => (
             <Route path="/admin" element={<RequireAuth adminOnly><AdminPage /></RequireAuth>} />
             <Route path="/admin/bot-settings" element={<RequireAuth adminOnly><BotSettingsPage /></RequireAuth>} />
             <Route path="/admin/operator" element={<RequireAuth adminOnly><ResortOperatorPage /></RequireAuth>} />
-            <Route path="/admin/agent-runtime" element={<RequireAuth adminOnly><AgentRuntimeSettingsPage /></RequireAuth>} />
 
             <Route path="/order-type" element={<RequireAuth requiredPermission="orders"><OrderType /></RequireAuth>} />
             <Route path="/employee" element={<RequireAuth><EmployeePage /></RequireAuth>} />

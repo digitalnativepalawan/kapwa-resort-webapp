@@ -1,29 +1,22 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-async function callClaude(prompt: string, maxTokens = 700): Promise<string> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${Deno.env.get("OPENROUTER_API_KEY")}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://paghxagqnaisxesmhnwj.supabase.co",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-haiku-4-5",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-    }),
-  });
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "";
-}
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-secret",
 };
 
-// ── Manila helpers ────────────────────────────────────────────────────────────
+const jsonResponse = (payload: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+function sb() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+}
 
 function manilaDate(offsetDays = 0): string {
   return new Date(Date.now() + (8 + offsetDays * 24) * 3_600_000)
@@ -31,50 +24,75 @@ function manilaDate(offsetDays = 0): string {
     .slice(0, 10);
 }
 
-function manilaRangeStart(date: string) { return `${date}T00:00:00+08:00`; }
-function manilaRangeEnd(date: string)   { return `${date}T23:59:59+08:00`; }
+function manilaRangeStart(date: string) {
+  return `${date}T00:00:00+08:00`;
+}
 
-// ── Shared DB helpers ─────────────────────────────────────────────────────────
+function manilaRangeEnd(date: string) {
+  return `${date}T23:59:59+08:00`;
+}
 
-function sb() {
-  return createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(normalized));
+  } catch {
+    return null;
+  }
+}
+
+function isAdminRequest(req: Request): boolean {
+  const auth = req.headers.get("authorization") ?? "";
+  const token = auth.replace(/^Bearer\s+/i, "").trim();
+  const payload = token ? decodeJwtPayload(token) : null;
+  return payload?.is_admin === true ||
+    (Array.isArray(payload?.permissions) && payload.permissions.includes("admin"));
+}
+
+async function callModel(prompt: string, maxTokens = 700): Promise<string> {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured");
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("APP_URL") ?? "https://kapwa.local",
+      "X-Title": "KAPWA Hospitality OS",
+    },
+    body: JSON.stringify({
+      model: Deno.env.get("OPS_COORDINATOR_MODEL") ?? "anthropic/claude-haiku-4-5",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0.2,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter returned ${response.status}: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+  const reply = data.choices?.[0]?.message?.content?.trim();
+  if (!reply) throw new Error("OpenRouter returned an empty operations brief");
+  return reply;
 }
 
 async function sendTelegram(supabase: any, group: string, message: string) {
-  await supabase.functions.invoke("send-telegram", {
+  const { error } = await supabase.functions.invoke("send-telegram", {
     body: { group, message },
-    headers: {
-      "x-internal-secret": Deno.env.get("INTERNAL_FN_SECRET") ?? "",
-    },
+    headers: { "x-internal-secret": Deno.env.get("INTERNAL_FN_SECRET") ?? "" },
   });
+  if (error) throw error;
 }
-
-async function createTask(supabase: any, opts: {
-  title: string;
-  description: string;
-  category: string;
-  priority: "low" | "medium" | "high";
-  due_date: string;
-}) {
-  await supabase.from("resort_ops_tasks").insert({
-    title: opts.title,
-    description: opts.description,
-    category: opts.category,
-    priority: opts.priority,
-    due_date: opts.due_date,
-    status: "pending",
-  });
-}
-
-// ── Data fetcher ──────────────────────────────────────────────────────────────
 
 async function fetchBriefData(supabase: any, type: string) {
-  const today     = manilaDate(0);
+  const today = manilaDate();
   const yesterday = manilaDate(-1);
-  const tomorrow  = manilaDate(1);
+  const tomorrow = manilaDate(1);
 
   const [
     activeRes,
@@ -91,251 +109,242 @@ async function fetchBriefData(supabase: any, type: string) {
     tomorrowArrivalsRes,
     expensesRes,
   ] = await Promise.all([
-    // Active stays
     supabase
       .from("resort_ops_bookings")
-      .select("id, check_in, check_out, room_rate, paid_amount, addons_total, checked_in_at, checked_out_at, platform, resort_ops_guests(full_name), resort_ops_units(name)")
+      .select("id,check_in,check_out,room_rate,paid_amount,addons_total,checked_in_at,checked_out_at,platform,resort_ops_guests(full_name),resort_ops_units(name)")
       .lte("check_in", today)
       .gte("check_out", today)
       .is("checked_out_at", null),
-
-    // Total units
-    supabase.from("resort_ops_units").select("id", { count: "exact", head: true }),
-
-    // Open guest requests
+    supabase.from("resort_ops_units").select("id,name,status,active").eq("active", true),
     supabase
       .from("guest_requests")
-      .select("id, guest_name, request_type, details, status, created_at")
-      .neq("status", "completed")
+      .select("id,guest_name,request_type,details,status,priority,created_at")
+      .not("status", "in", "(completed,cancelled)")
       .order("created_at", { ascending: true }),
-
-    // Housekeeping queue
     supabase
       .from("housekeeping_orders")
-      .select("id, unit_name, status, damage_notes, accepted_by_name, cleaning_by_name, created_at")
+      .select("id,unit_name,status,damage_notes,accepted_by_name,cleaning_by_name,created_at")
       .not("status", "in", "(completed,cancelled)"),
-
-    // Overdue tasks
     supabase
       .from("resort_ops_tasks")
-      .select("id, title, category, due_date, priority")
+      .select("id,title,category,due_date,priority,status")
       .neq("status", "done")
       .lt("due_date", today)
       .order("due_date", { ascending: true }),
-
-    // Tours today
-    supabase
-      .from("guest_tours")
-      .select("tour_name, pax, price, status, pickup_time")
-      .eq("tour_date", today),
-
-    // Today arrivals
+    supabase.from("guest_tours").select("tour_name,pax,price,status,pickup_time").eq("tour_date", today),
     supabase
       .from("resort_ops_bookings")
-      .select("checked_in_at, room_rate, paid_amount, addons_total, platform, resort_ops_guests(full_name), resort_ops_units(name)")
+      .select("checked_in_at,room_rate,paid_amount,addons_total,platform,resort_ops_guests(full_name),resort_ops_units(name)")
       .eq("check_in", today)
       .is("checked_out_at", null),
-
-    // Today departures
     supabase
       .from("resort_ops_bookings")
-      .select("checked_out_at, room_rate, paid_amount, addons_total, resort_ops_guests(full_name), resort_ops_units(name)")
+      .select("checked_out_at,room_rate,paid_amount,addons_total,resort_ops_guests(full_name),resort_ops_units(name)")
       .eq("check_out", today),
-
-    // Yesterday F&B
-    supabase
-      .from("orders")
-      .select("total")
-      .eq("status", "Closed")
-      .gte("closed_at", manilaRangeStart(yesterday))
-      .lt("closed_at", manilaRangeStart(today)),
-
-    // Today F&B
-    supabase
-      .from("orders")
-      .select("total")
-      .eq("status", "Closed")
-      .gte("closed_at", manilaRangeStart(today))
-      .lte("closed_at", manilaRangeEnd(today)),
-
-    // Open tabs
-    supabase.from("tabs").select("id, guest_name, location_detail").eq("status", "Open"),
-
-    // Tomorrow arrivals
+    supabase.from("orders").select("total").eq("status", "Closed").gte("closed_at", manilaRangeStart(yesterday)).lt("closed_at", manilaRangeStart(today)),
+    supabase.from("orders").select("total").eq("status", "Closed").gte("closed_at", manilaRangeStart(today)).lte("closed_at", manilaRangeEnd(today)),
+    supabase.from("tabs").select("id,guest_name,location_detail").eq("status", "Open"),
     supabase
       .from("resort_ops_bookings")
-      .select("platform, resort_ops_guests(full_name), resort_ops_units(name)")
+      .select("platform,resort_ops_guests(full_name),resort_ops_units(name)")
       .eq("check_in", tomorrow),
-
-    // Today expenses
-    supabase
-      .from("resort_ops_expenses")
-      .select("amount, category")
-      .eq("expense_date", today),
+    supabase.from("resort_ops_expenses").select("amount,category").eq("expense_date", today),
   ]);
 
+  const results = [activeRes, unitsRes, requestsRes, hkRes, overdueTasksRes, toursTodayRes, arrivalsRes, departuresRes, fbYestRes, fbTodayRes, openTabsRes, tomorrowArrivalsRes, expensesRes];
+  const failed = results.find((result: any) => result.error);
+  if (failed?.error) throw failed.error;
+
   const now = Date.now();
-  const TWO_HOURS = 2 * 3_600_000;
-
-  const active = (activeRes.data ?? []).map((b: any) => ({
-    guest:      b.resort_ops_guests?.full_name ?? "Unknown",
-    unit:       b.resort_ops_units?.name ?? "—",
-    check_in:   b.check_in,
-    check_out:  b.check_out,
-    platform:   b.platform ?? "Direct",
-    checked_in: !!b.checked_in_at,
-    balance:    Math.max(0, (b.room_rate ?? 0) + (b.addons_total ?? 0) - (b.paid_amount ?? 0)),
+  const twoHours = 2 * 3_600_000;
+  const active = (activeRes.data ?? []).map((booking: any) => ({
+    guest: booking.resort_ops_guests?.full_name ?? "Unknown",
+    unit: booking.resort_ops_units?.name ?? "—",
+    check_in: booking.check_in,
+    check_out: booking.check_out,
+    platform: booking.platform ?? "Direct",
+    checked_in: Boolean(booking.checked_in_at),
+    balance: Math.max(0, (booking.room_rate ?? 0) + (booking.addons_total ?? 0) - (booking.paid_amount ?? 0)),
   }));
-
-  const totalUnits = unitsRes.count ?? 0;
-
-  const requests = (requestsRes.data ?? []);
-  const overdueRequests = requests.filter((r: any) =>
-    r.status === "pending" && (now - new Date(r.created_at).getTime()) > TWO_HOURS
+  const units = unitsRes.data ?? [];
+  const requests = requestsRes.data ?? [];
+  const housekeeping = hkRes.data ?? [];
+  const arrivals = arrivalsRes.data ?? [];
+  const departures = departuresRes.data ?? [];
+  const overdueRequests = requests.filter((request: any) =>
+    request.status === "pending" && now - new Date(request.created_at).getTime() > twoHours
   );
-
-  const hkQueue = (hkRes.data ?? []);
-  const damageNotes = hkQueue
-    .filter((h: any) => h.damage_notes)
-    .map((h: any) => `${h.unit_name}: ${h.damage_notes}`);
-
-  const arrivals    = (arrivalsRes.data ?? []);
-  const departures  = (departuresRes.data ?? []);
-  const fbYest      = (fbYestRes.data ?? []).reduce((s: number, o: any) => s + (o.total ?? 0), 0);
-  const fbToday     = (fbTodayRes.data ?? []).reduce((s: number, o: any) => s + (o.total ?? 0), 0);
-  const openTabs    = (openTabsRes.data ?? []);
-  const tomorrowArr = (tomorrowArrivalsRes.data ?? []);
-  const expenses    = (expensesRes.data ?? []);
-  const expTotal    = expenses.reduce((s: number, e: any) => s + (e.amount ?? 0), 0);
-
-  const departingWithBalance = departures.filter((b: any) =>
-    Math.max(0, (b.room_rate ?? 0) + (b.addons_total ?? 0) - (b.paid_amount ?? 0)) > 0
+  const urgentRequests = requests.filter((request: any) => ["urgent", "high"].includes(String(request.priority).toLowerCase()));
+  const dirtyUnits = units.filter((unit: any) => ["dirty", "to_clean"].includes(String(unit.status).toLowerCase()));
+  const missingHousekeeping = dirtyUnits.filter((unit: any) =>
+    !housekeeping.some((order: any) => order.unit_name === unit.name)
   );
+  const fbYesterday = (fbYestRes.data ?? []).reduce((sum: number, order: any) => sum + (order.total ?? 0), 0);
+  const fbToday = (fbTodayRes.data ?? []).reduce((sum: number, order: any) => sum + (order.total ?? 0), 0);
+  const expenses = expensesRes.data ?? [];
 
   return {
-    brief_type:   type,
-    date:         today,
+    brief_type: type,
+    date: today,
     occupancy: {
-      active:      active.length,
-      total:       totalUnits,
-      pct:         totalUnits > 0 ? Math.round(active.length / totalUnits * 100) : 0,
+      active: active.length,
+      total: units.length,
+      pct: units.length ? Math.round(active.length / units.length * 100) : 0,
     },
-    active_bookings:         active,
-    total_unpaid:            Math.round(active.reduce((s: number, b: any) => s + b.balance, 0)),
-    departing_with_balance:  departingWithBalance.map((b: any) => ({
-      guest:   b.resort_ops_guests?.full_name ?? "Unknown",
-      unit:    b.resort_ops_units?.name ?? "—",
-      balance: Math.max(0, (b.room_rate ?? 0) + (b.addons_total ?? 0) - (b.paid_amount ?? 0)),
-    })),
+    active_bookings: active,
+    total_unpaid: Math.round(active.reduce((sum: number, booking: any) => sum + booking.balance, 0)),
     arrivals: {
-      expected:    arrivals.length,
-      checked_in:  arrivals.filter((b: any) => b.checked_in_at).length,
-      pending:     arrivals.filter((b: any) => !b.checked_in_at).length,
+      expected: arrivals.length,
+      checked_in: arrivals.filter((booking: any) => booking.checked_in_at).length,
+      pending: arrivals.filter((booking: any) => !booking.checked_in_at).length,
     },
     departures: {
-      expected:    departures.length,
-      checked_out: departures.filter((b: any) => b.checked_out_at).length,
+      expected: departures.length,
+      checked_out: departures.filter((booking: any) => booking.checked_out_at).length,
     },
     housekeeping: {
-      pending:     hkQueue.filter((h: any) => ["pending", "assigned"].includes(h.status)).length,
-      cleaning:    hkQueue.filter((h: any) => ["accepted", "in_progress", "cleaning"].includes(h.status)).length,
-      damage_notes: damageNotes,
+      open: housekeeping.length,
+      dirty_units: dirtyUnits.map((unit: any) => ({ id: unit.id, name: unit.name })),
+      missing_orders: missingHousekeeping.map((unit: any) => ({ id: unit.id, name: unit.name })),
+      damage_notes: housekeeping.filter((order: any) => order.damage_notes).map((order: any) => `${order.unit_name}: ${order.damage_notes}`),
     },
     requests: {
-      open:    requests.length,
+      open: requests.length,
       overdue: overdueRequests.length,
-      overdue_items: overdueRequests.map((r: any) => ({
-        type: r.request_type ?? "request",
-        age_hours: Math.floor((now - new Date(r.created_at).getTime()) / 3_600_000),
+      urgent: urgentRequests.map((request: any) => ({
+        id: request.id,
+        guest_name: request.guest_name,
+        request_type: request.request_type,
+        details: request.details,
+        priority: request.priority,
       })),
     },
-    overdue_tasks: (overdueTasksRes.data ?? []).map((t: any) => ({
-      title:       t.title,
-      days_late:   Math.floor((new Date(today).getTime() - new Date(t.due_date).getTime()) / 86_400_000),
-      priority:    t.priority,
-    })),
-    tours_today:  (toursTodayRes.data ?? []).map((t: any) => ({
-      name: t.tour_name, pax: t.pax ?? 0, pickup: t.pickup_time ?? "TBD", status: t.status,
-    })),
-    fb_yesterday: Math.round(fbYest),
-    fb_today:     Math.round(fbToday),
-    open_tabs:    openTabs.map((t: any) => ({ guest: t.guest_name, location: t.location_detail })),
-    tomorrow_arrivals: tomorrowArr.map((b: any) => ({
-      guest:    b.resort_ops_guests?.full_name ?? "Unknown",
-      unit:     b.resort_ops_units?.name ?? "—",
-      platform: b.platform ?? "Direct",
-    })),
-    expenses_today: { total: Math.round(expTotal), count: expenses.length },
+    overdue_tasks: overdueTasksRes.data ?? [],
+    tours_today: toursTodayRes.data ?? [],
+    fb_yesterday: Math.round(fbYesterday),
+    fb_today: Math.round(fbToday),
+    open_tabs: openTabsRes.data ?? [],
+    tomorrow_arrivals: tomorrowArrivalsRes.data ?? [],
+    expenses_today: {
+      total: Math.round(expenses.reduce((sum: number, expense: any) => sum + (expense.amount ?? 0), 0)),
+      count: expenses.length,
+    },
   };
 }
 
-// ── Prompt builder ────────────────────────────────────────────────────────────
-
-function buildPrompt(data: Record<string, any>): string {
+function buildPrompt(data: Record<string, any>, question?: string): string {
   const labels: Record<string, string> = {
-    morning: "🌅 MORNING BRIEF",
-    evening: "🌙 EVENING BRIEF",
-    daily:   "📊 DAILY SUMMARY",
+    morning: "MORNING BRIEF",
+    evening: "EVENING BRIEF",
+    daily: "DAILY SUMMARY",
+  };
+  const focus: Record<string, string> = {
+    morning: "arrivals, departures, balances, room readiness, overdue tasks, guest requests and tour pickups",
+    evening: "arrival completion, F&B revenue, open tabs, unresolved requests and tomorrow's arrivals",
+    daily: "occupancy, revenue, expenses, unresolved work and the highest-priority management actions",
   };
 
-  const instructions: Record<string, string> = {
-    morning: `Focus on: arrivals/departures for today, unpaid departing guests, housekeeping readiness, overdue tasks, tour pickups. End with "Ready for morning briefing." or a top action item.`,
-    evening: `Focus on: arrival completion (did all guests check in?), F&B revenue, open tabs, unresolved guest requests, tomorrow's preview. Flag anything unresolved.`,
-    daily:   `Focus on: revenue totals (F&B + unpaid balance overview), occupancy achieved, tasks completed vs open, expenses recorded, open items carried to tomorrow.`,
-  };
-
-  return `Generate a ${labels[data.brief_type]} for KAPWA Hospitality OS on ${data.date}.
-
-Operational data:
-${JSON.stringify(data, null, 2)}
-
-Instructions:
-- Plain text only. No markdown. No asterisks.
-- Bullets use "•". Section headers in ALL CAPS.
-- ${instructions[data.brief_type]}
-- Maximum 320 words. Cut anything not actionable.
-- Flag ALERTS prominently. Departing guests with balance = urgent.
-- Currency: Philippine Peso (₱), whole numbers.
-- If no issues: say "No issues flagged."
-- Tone: direct, helpful to a resort owner.`;
+  return `You are the KAPWA Resort Operations Coordinator. Generate the ${labels[data.brief_type]} for ${data.date}.
+Manager question: ${question?.trim() || "What needs management attention now?"}
+Operational data: ${JSON.stringify(data)}
+Rules:
+- Use only supplied data. Never invent a guest, amount, room status or completed action.
+- Put urgent risks first, then today's priorities, then recommended next actions.
+- Focus on ${focus[data.brief_type]}.
+- Plain text, maximum 320 words, direct resort-owner tone.
+- Currency is Philippine Peso (₱), whole numbers.
+- Never claim an action was executed.`;
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+function buildActionProposals(data: Record<string, any>) {
+  const actions: Record<string, unknown>[] = [];
+  for (const unit of data.housekeeping.missing_orders ?? []) {
+    actions.push({
+      id: crypto.randomUUID(),
+      action_type: "create_housekeeping_task",
+      title: `Create cleaning task for ${unit.name}`,
+      description: "Room needs cleaning and has no active housekeeping order.",
+      target_id: unit.id,
+      payload: { unit_name: unit.name },
+      risk_level: "low",
+      status: "proposed",
+      created_at: new Date().toISOString(),
+    });
+  }
+  for (const request of data.requests.urgent ?? []) {
+    actions.push({
+      id: crypto.randomUUID(),
+      action_type: "escalate_guest_request",
+      title: `Escalate ${request.request_type ?? "guest request"}${request.guest_name ? ` for ${request.guest_name}` : ""}`,
+      description: request.details || "Urgent guest request needs staff attention.",
+      target_id: request.id,
+      payload: { status: "escalated" },
+      risk_level: "medium",
+      status: "proposed",
+      created_at: new Date().toISOString(),
+    });
+  }
+  return actions;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const secret = Deno.env.get("INTERNAL_FN_SECRET");
-  if (secret && req.headers.get("x-internal-secret") !== secret) {
-    return new Response(JSON.stringify({ error: "Forbidden" }), {
-      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
+  const internalSecret = Deno.env.get("INTERNAL_FN_SECRET");
+  const internalAuthorized = Boolean(internalSecret) && req.headers.get("x-internal-secret") === internalSecret;
+  const adminAuthorized = isAdminRequest(req);
 
   try {
-    const { type = "morning" } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const type = body.type ?? "morning";
+    const delivery = body.delivery ?? "preview";
+    const question = typeof body.question === "string" ? body.question : undefined;
+
     if (!["morning", "evening", "daily"].includes(type)) {
-      return new Response(JSON.stringify({ error: "type must be morning | evening | daily" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "type must be morning | evening | daily" }, 400);
+    }
+    if (!["preview", "telegram"].includes(delivery)) {
+      return jsonResponse({ error: "delivery must be preview | telegram" }, 400);
+    }
+    if (delivery === "telegram" && !internalAuthorized && !adminAuthorized) {
+      return jsonResponse({ error: "Forbidden" }, 403);
+    }
+    if (delivery === "preview" && !adminAuthorized && !internalAuthorized) {
+      return jsonResponse({ error: "Admin access required" }, 403);
     }
 
     const supabase = sb();
-    const data     = await fetchBriefData(supabase, type);
+    const data = await fetchBriefData(supabase, type);
+    let brief: string;
+    let provider = "deterministic";
+    let model: string | null = null;
 
-    const brief = await callClaude(buildPrompt(data), 700);
+    try {
+      brief = await callModel(buildPrompt(data, question));
+      provider = "openrouter";
+      model = Deno.env.get("OPS_COORDINATOR_MODEL") ?? "anthropic/claude-haiku-4-5";
+    } catch (error) {
+      console.error("[ops-coordinator] model fallback", error);
+      brief = `${data.arrivals.expected} arrivals, ${data.departures.expected} departures, ${data.housekeeping.open} open housekeeping orders, ${data.requests.open} open guest requests, ${data.overdue_tasks.length} overdue tasks, and ₱${data.total_unpaid} unpaid across active stays. Review urgent requests, missing room-cleaning orders, departing balances and overdue work first.`;
+    }
 
-    await sendTelegram(supabase, "managers", brief);
+    if (delivery === "telegram") {
+      await sendTelegram(supabase, body.group ?? "managers", brief);
+    }
 
-    return new Response(
-      JSON.stringify({ ok: true, type, chars: brief.length }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err: any) {
-    console.error("[ops-coordinator]", err);
-    return new Response(
-      JSON.stringify({ ok: false, error: err.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({
+      ok: true,
+      type,
+      delivery,
+      brief,
+      data,
+      actions: buildActionProposals(data),
+      provider,
+      model,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("[ops-coordinator]", error);
+    return jsonResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
   }
 });
