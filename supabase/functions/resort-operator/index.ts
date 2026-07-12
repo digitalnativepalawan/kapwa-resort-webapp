@@ -39,15 +39,15 @@ function decodeJwtPayload(token: string): Record<string, any> | null {
 }
 
 function isAuthorized(req: Request): boolean {
-  const internal = req.headers.get("x-internal-secret");
-  const stored = Deno.env.get("INTERNAL_FN_SECRET") ?? "";
+  const internal = (req.headers.get("x-internal-secret") ?? "").trim();
+  const stored = (Deno.env.get("INTERNAL_FN_SECRET") ?? "").trim();
   if (internal) {
     // Diagnostic (no secret contents in logs, only lengths + match flag).
     console.log(JSON.stringify({
       diag: "internal-secret-check",
       header_len: internal.length,
       stored_len: stored.length,
-      match: internal === stored,
+      match: internal.length > 0 && internal === stored,
     }));
   }
   if (internal && stored && internal === stored) return true;
