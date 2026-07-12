@@ -69,7 +69,9 @@ Open:
 /admin/agent-runtime
 ```
 
-Enter the same `KAPWA_ADMIN_TOKEN` used by the server, then choose one runtime:
+Enter the same `KAPWA_ADMIN_TOKEN` used by the server. It is stored only in browser session storage and is required whenever the Resort Operator sends a live operational snapshot for model analysis.
+
+Choose one runtime:
 
 - OpenRouter model
 - Local Ollama model
@@ -91,9 +93,10 @@ The operator will:
 
 1. read current bookings, rooms, housekeeping, requests, disputes, tours, and active orders;
 2. produce a deterministic operational summary;
-3. use the selected model for management analysis when available;
-4. create approval-required actions;
-5. log the run, provider, model, inputs, outputs, decisions, and execution results.
+3. use the selected model for management analysis when available and authorized;
+4. fall back to deterministic analysis when the model runtime is unavailable;
+5. create approval-required actions;
+6. log the run, provider, model, inputs, outputs, decisions, and execution results.
 
 ## 6. Required release validation
 
@@ -103,6 +106,7 @@ Run:
 npm test
 npm run lint
 npm run build
+node --check server/index.js
 ```
 
 Then verify manually:
@@ -110,8 +114,9 @@ Then verify manually:
 1. OpenRouter model catalog loads.
 2. Ollama detection lists installed models.
 3. Resort Operator produces a live-data brief.
-4. Approving a missing housekeeping action creates one order only.
-5. Repeating the same approval does not create a duplicate active order.
-6. Approving an urgent guest request changes its status to `escalated`.
-7. Billing disputes remain manual.
-8. Operator analysis fails closed without the admin token and falls back to the deterministic brief in the UI.
+4. The operator endpoint rejects requests without the admin token.
+5. Approving a missing housekeeping action creates one order only.
+6. Repeating the same approval does not create a duplicate active order.
+7. Approving an urgent guest request changes its status to `escalated`.
+8. Billing disputes remain manual.
+9. Operator analysis falls back to the deterministic brief when the runtime is unavailable.
