@@ -116,7 +116,7 @@ async function fetchBriefData(supabase: any, type: string) {
       .lte("check_in", today)
       .gte("check_out", today)
       .is("checked_out_at", null),
-    supabase.from("resort_ops_units").select("id,name,status,active").eq("active", true),
+    supabase.from("resort_ops_units").select("id,name"),
     supabase
       .from("guest_requests")
       .select("id,guest_name,request_type,details,status,priority,created_at")
