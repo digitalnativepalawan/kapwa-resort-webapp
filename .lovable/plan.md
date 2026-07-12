@@ -1,66 +1,32 @@
-# KAPWA Hospitality OS — workspace plan
+# resort-operator deployment verification plan
 
-## Reception luxury dashboard refactor
+Everything you asked about is already in place from earlier setup turns. This plan just aligns the shared secret to the exact value you specified and produces the verification output you want. No system keys are touched.
 
-Restyle `src/pages/ReceptionPage.tsx` so its header, stat strip, and overview blocks visually match the uploaded KAPWA Hospitality OS reference. **No data, no routes, no hooks, no business logic touched.** Mobile-first stacked layout; desktop uses two-column where the reference shows side-by-side blocks.
+## Current state (already verified)
 
-## What changes
+- `supabase/functions/resort-operator/` exists in the repo (index.ts, planner.ts, executor.ts, state.ts, cases.ts, system-map.ts). Lovable Cloud auto-deploys edge functions on every push, so it is already reachable at `/functions/v1/resort-operator`.
+- `public.ops_cases` table exists in the database.
+- pg_cron job `resort-operator-cycle` exists.
+- `INTERNAL_FN_SECRET` is already configured as a backend secret (currently a random 64-char value generated in an earlier turn, not your value).
+- `resort-agent-loop` already sends `x-internal-secret: ${INTERNAL_FN_SECRET}` when calling `resort-operator`, and `resort-operator/index.ts` already checks that header against the same env var — so once both functions share the same value, internal calls authenticate automatically.
 
-### 1. Header strip (top of page)
-- Replace current `LuxuryHeader` with a two-column header:
-  - **Left:** Eyebrow "Reception · KAPWA OS" in gold tracking, big serif `Good {timeOfDay}, {staffName} 👋`, sub "Here's what's happening at KAPWA OS."
-  - **Right:** Glass pill containing weather placeholder (`Cloud` icon, `28°C`, `San Vicente, Palawan`) — static labels only, no new fetches.
+## What I'll do
 
-### 2. Hero stat row — 4 glowing cards
-Replace the existing 4-card grid (Occupied / To Clean / Ready / Occupancy) with **bordered glow cards** matching the reference:
-- Card pattern per tile: `rounded-2xl border` with tone-tinted border + soft inner radial glow + huge serif numeral + label + small lucide icon bottom-right.
-- Tones: Occupied → rose, To Clean → gold/amber, Ready → emerald, Occupancy% → teal/blue.
-- Use existing semantic tokens (`--destructive`, `--gold`, `--emerald`, `--teal`) — add a new `.luxury-glow-card` utility in `index.css` that paints the radial halo so we avoid hex in JSX.
+1. **Overwrite `INTERNAL_FN_SECRET`** to the exact value you provided (`DiPkf7xIPBE8fZZUPKvKLoUXKkUMhLHd`) using `set_secret`. Both `resort-operator` and `resort-agent-loop` read this from the same env var, so they stay in sync automatically — no code change needed.
+2. **No code changes, no migrations, no system keys touched.** The function code, ops_cases migration, and cron migration are already applied.
+3. **Live test:** call `resort-operator` with `{"action":"state"}` via the edge-function curl tool using an admin JWT, and paste the JSON response back to you.
+4. **Confirm schema + cron** by re-running the introspection query and showing you the row: `ops_cases` regclass and `resort-operator-cycle` job name.
+5. **Confirm secret parity** by listing configured backend secrets (names only) so you can see `INTERNAL_FN_SECRET` is present for both functions (they share one env).
 
-### 3. Mid strip — Arrivals / Departures / Revenue Today
-A single `LuxuryCard` row with 3 columns:
-- Arrivals Today (count + `Users` icon)
-- Departures Today (count + `PlaneTakeoff` icon)
-- Revenue Today (₱ value + tiny sparkline using existing `OccupancySparkline` if cheap; otherwise a static SVG line — no new data fetches).
+## One note before I proceed
 
-Revenue value reuses whatever is currently available (already-rendered total) or shows `—` if not computed; we will not add a new query.
+You pasted the intended secret value in plain chat. That's fine to use, but the chat transcript now contains it. If you'd rather I generate/store a fresh value you never share in chat, say the word and I'll rotate it instead. Otherwise I'll set it to `DiPkf7xIPBE8fZZUPKvKLoUXKkUMhLHd` exactly as given.
 
-### 4. Two-column overview row
-Side-by-side `LuxuryCard`s (stacks on mobile):
-- **Housekeeping Overview** — donut chart (re-use counts from `occupiedUnits`, `toCleanUnits`, `readyUnits` already computed; render with a small inline SVG donut, no new dep) + legend.
-- **Tasks & Alerts** — list rows for: Late Checkout count, Guest Requests (`pendingRequests.length`), Maintenance (placeholder 0). Reuses existing arrays only.
+## Not doing
 
-### 5. Recent Activity + Inspiration row
-- **Recent Activity** card: last 3 items derived from already-loaded `bookings` / `todayDepartures` (no new query). Each row: icon, title, subtitle, relative time using existing `date-fns`.
-- **Today's Inspiration** card: full-bleed ocean image (`public/` placeholder or existing asset) with serif tagline "Breathe in the ocean. Let hospitality flow naturally." Pure decoration.
+- Not redeploying function code (unchanged; auto-deploy already handled it).
+- Not re-running the two migrations (already applied).
+- Not touching anon/service-role/publishable keys.
+- Not modifying UI or any other function.
 
-### 6. Quick Access tiles
-5 square tiles with colored glass icons (New Reservation, Walk-in Guest, Room Status, Reports, Inventory). Each tile is a `<button>` that triggers the **same handlers/navigation already wired** in the page (walk-in modal, calendar scroll, etc.). No new routes.
-
-### 7. System Notice footer bar
-Thin glass bar with bell icon + "Night Audit will run automatically at 11:59 PM." + "View all" link (no-op or scroll-to-top). Pure UI.
-
-### 8. Keep below the fold
-All existing operational sections (room cards, checkout flow, housekeeping tracker, calendar, modals) remain unchanged below the new dashboard hero. Only the top "summary" zone is restyled.
-
-## Tokens / CSS
-
-Add to `src/index.css` (semantic, no hex in components):
-```css
-.luxury-stat-glow-rose    { box-shadow: inset 0 0 60px -20px hsl(var(--destructive)/.35); }
-.luxury-stat-glow-gold    { box-shadow: inset 0 0 60px -20px hsl(var(--gold)/.35); }
-.luxury-stat-glow-emerald { box-shadow: inset 0 0 60px -20px hsl(var(--emerald)/.35); }
-.luxury-stat-glow-teal    { box-shadow: inset 0 0 60px -20px hsl(var(--teal)/.35); }
-```
-Extend `LuxuryStatCard` with a `glow` prop (optional) that applies the matching class — backwards-compatible with current usages in AdminPage/ReportsDashboard.
-
-## Out of scope
-- No schema, RLS, edge function, or query changes.
-- No new dependencies (donut + sparkline = inline SVG).
-- No changes to modals, calendar, or any handler logic.
-- Weather + revenue sparkline are visual placeholders only.
-
-## Files touched
-- `src/pages/ReceptionPage.tsx` — restyle top zone
-- `src/components/luxury/index.tsx` — optional `glow` prop on `LuxuryStatCard`
-- `src/index.css` — 4 glow utility classes
+Approve and I'll execute steps 1–5 and report the test response.
