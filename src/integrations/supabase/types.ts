@@ -837,39 +837,66 @@ export type Database = {
       }
       guest_requests: {
         Row: {
+          assigned_at: string | null
+          assigned_to: string | null
           booking_id: string | null
+          completed_at: string | null
+          completed_by: string | null
           confirmed_by: string
           created_at: string
           details: string
+          escalated_at: string | null
           guest_name: string
           id: string
           request_type: string
+          resolution_notes: string
           room_id: string | null
+          routed_group: string | null
           status: string
+          telegram_chat_id: number | null
+          telegram_message_id: number | null
           updated_at: string
         }
         Insert: {
+          assigned_at?: string | null
+          assigned_to?: string | null
           booking_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
           confirmed_by?: string
           created_at?: string
           details?: string
+          escalated_at?: string | null
           guest_name?: string
           id?: string
           request_type?: string
+          resolution_notes?: string
           room_id?: string | null
+          routed_group?: string | null
           status?: string
+          telegram_chat_id?: number | null
+          telegram_message_id?: number | null
           updated_at?: string
         }
         Update: {
+          assigned_at?: string | null
+          assigned_to?: string | null
           booking_id?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
           confirmed_by?: string
           created_at?: string
           details?: string
+          escalated_at?: string | null
           guest_name?: string
           id?: string
           request_type?: string
+          resolution_notes?: string
           room_id?: string | null
+          routed_group?: string | null
           status?: string
+          telegram_chat_id?: number | null
+          telegram_message_id?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -1459,6 +1486,107 @@ export type Database = {
           sort_order?: number
         }
         Relationships: []
+      }
+      ops_cases: {
+        Row: {
+          approval_required: boolean
+          approved_at: string | null
+          approved_by: string | null
+          booking_id: string | null
+          closed_at: string | null
+          created_at: string
+          department: string
+          domain: string
+          due_at: string | null
+          escalation_level: number
+          guest_name: string
+          history: Json
+          id: string
+          issue_type: string
+          owner: string
+          priority: string
+          required_action: string
+          resolution_evidence: Json
+          retry_count: number
+          risk: string
+          source_id: string | null
+          source_table: string
+          status: string
+          unit_label: string
+          updated_at: string
+          verification_rule: string
+          verified: boolean
+          verified_at: string | null
+        }
+        Insert: {
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          booking_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          department?: string
+          domain: string
+          due_at?: string | null
+          escalation_level?: number
+          guest_name?: string
+          history?: Json
+          id?: string
+          issue_type?: string
+          owner?: string
+          priority?: string
+          required_action?: string
+          resolution_evidence?: Json
+          retry_count?: number
+          risk?: string
+          source_id?: string | null
+          source_table?: string
+          status?: string
+          unit_label?: string
+          updated_at?: string
+          verification_rule?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Update: {
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          booking_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          department?: string
+          domain?: string
+          due_at?: string | null
+          escalation_level?: number
+          guest_name?: string
+          history?: Json
+          id?: string
+          issue_type?: string
+          owner?: string
+          priority?: string
+          required_action?: string
+          resolution_evidence?: Json
+          retry_count?: number
+          risk?: string
+          source_id?: string | null
+          source_table?: string
+          status?: string
+          unit_label?: string
+          updated_at?: string
+          verification_rule?: string
+          verified?: boolean
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ops_cases_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       order_types: {
         Row: {
@@ -2777,6 +2905,7 @@ export type Database = {
       is_admin: { Args: never; Returns: boolean }
       is_staff: { Args: never; Returns: boolean }
       jwt_permissions: { Args: never; Returns: Json }
+      trigger_resort_operator: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
