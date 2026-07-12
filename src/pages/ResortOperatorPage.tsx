@@ -278,8 +278,13 @@ export default function ResortOperatorPage() {
               </Select>
               <Textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="Ask about current resort operations" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={() => fullLoop.mutate()} disabled={isRunning || !question.trim()}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => dailyOperator.mutate()} disabled={isRunning}>
+                {dailyOperator.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                Run Daily Operator
+              </Button>
+              {runtimeMode && <Badge variant="secondary">runtime: {runtimeMode}</Badge>}
+              <Button variant="outline" onClick={() => fullLoop.mutate()} disabled={isRunning || !question.trim()}>
                 {fullLoop.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Run full resort loop
               </Button>
@@ -291,6 +296,7 @@ export default function ResortOperatorPage() {
                 <Send className="mr-2 h-4 w-4" />Send brief to managers
               </Button>
             </div>
+
 
             {fullResult && (
               <div className="grid gap-3 md:grid-cols-3">
