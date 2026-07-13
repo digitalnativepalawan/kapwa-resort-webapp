@@ -77,6 +77,7 @@ const SetupExportCard = () => {
       'Housekeeping checklists',
       'Cleaning packages',
       'Employees, roles, and permissions',
+      'Guest FAQ memory (shared agent answers)',
     ],
     [],
   );
@@ -108,6 +109,7 @@ const SetupExportCard = () => {
         employeeRolesResult,
         employeePermissionsResult,
         staffRolesResult,
+        guestFaqMemoryResult,
       ] = await Promise.all([
         supabase.from('resort_profile').select('*').order('created_at'),
         (supabase.from('invoice_settings' as any) as any).select('*').order('created_at'),
@@ -125,6 +127,7 @@ const SetupExportCard = () => {
         supabase.from('employee_roles').select('*').order('created_at'),
         (supabase.from('employee_permissions' as any) as any).select('*').order('created_at'),
         (supabase.from('staff_roles' as any) as any).select('*').order('created_at'),
+        (supabase.from('guest_faq_memory' as any) as any).select('*').order('sort_order'),
       ]);
 
       const results = [
@@ -144,6 +147,7 @@ const SetupExportCard = () => {
         employeeRolesResult,
         employeePermissionsResult,
         staffRolesResult,
+        guestFaqMemoryResult,
       ];
 
       const failedResult = results.find((result) => result.error);
@@ -214,6 +218,18 @@ const SetupExportCard = () => {
           })),
         },
         { fileName: 'staff_roles.csv', rows: staffRoles },
+        {
+          fileName: 'guest_faq_memory.csv',
+          rows: (() => {
+            const rows = (guestFaqMemoryResult.data ?? []) as Record<string, unknown>[];
+            if (rows.length > 0) return rows;
+            // Template rows so the exported ZIP always contains a fillable FAQ file.
+            return [
+              { question: 'What time is breakfast?', keywords: ['breakfast', 'morning meal'], answer: 'Breakfast is served daily from 7:00 AM to 10:00 AM.', active: true, sort_order: 0 },
+              { question: 'What time is check-out?', keywords: ['checkout', 'check out'], answer: 'Check-out time is 11:00 AM.', active: true, sort_order: 1 },
+            ];
+          })(),
+        },
       ];
 
       const zip = new JSZip();
