@@ -12,7 +12,7 @@ interface Message {
   timestamp: Date;
 }
 
-const API_URL = import.meta.env.VITE_HERMES_URL || 'http://127.0.0.1:3000/api/hermes';
+
 
 const defaultSettings = {
   enabled: true,
