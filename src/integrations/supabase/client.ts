@@ -11,7 +11,7 @@ function isNewSupabaseApiKey(value: string): boolean {
 }
 
 function createSupabaseFetch(supabaseKey: string): typeof fetch {
-  return (input, init) => {
+  return async (input, init) => {
     const headers = new Headers(
       typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined,
     );
@@ -29,12 +29,24 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
       isNewSupabaseApiKey(supabaseKey)
       && currentAuthorization === `Bearer ${supabaseKey}`
     ) {
-      // New publishable keys are opaque API keys, not bearer JWTs.
       headers.delete('Authorization');
     }
 
     headers.set('apikey', supabaseKey);
-    return fetch(input, { ...init, headers });
+    let response = await fetch(input, { ...init, headers });
+
+    // If we sent a staff token and got 401, retry without it (token may be expired)
+    if (response.status === 401 && staffToken) {
+      headers.delete('Authorization');
+      response = await fetch(input, { ...init, headers });
+      if (response.ok || response.status !== 401) {
+        // Clear the invalid staff session
+        localStorage.removeItem('staff_home_session');
+        sessionStorage.removeItem('staff_home_session');
+      }
+    }
+
+    return response;
   };
 }
 
