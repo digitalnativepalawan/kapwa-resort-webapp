@@ -77,6 +77,7 @@ const SetupExportCard = () => {
       'Housekeeping checklists',
       'Cleaning packages',
       'Employees, roles, and permissions',
+      'Guest FAQ memory (shared agent answers)',
     ],
     [],
   );
