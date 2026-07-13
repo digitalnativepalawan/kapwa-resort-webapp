@@ -12,7 +12,7 @@ interface Message {
   timestamp: Date;
 }
 
-const API_URL = import.meta.env.VITE_HERMES_URL || 'http://127.0.0.1:3000/api/hermes';
+
 
 const defaultSettings = {
   enabled: true,
@@ -75,30 +75,24 @@ export default function AgentChatPanel() {
     setLoading(true);
 
     try {
-      const { settings, memory } = await loadSharedBotData();
-      const response = await fetch(`${API_URL}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage,
-          context: 'guest-concierge',
-          settings,
-          memory,
-        }),
+      const { memory } = await loadSharedBotData();
+      const history = messages.map(m => ({ role: m.role, content: m.content }));
+      const { data, error } = await supabase.functions.invoke('hermes-chat', {
+        body: { message: userMessage, memory, history },
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       setMessages(current => [...current, {
         role: 'assistant',
-        content: data.reply || 'No response from the guest concierge.',
+        content: data?.reply || 'No response from the guest concierge.',
         timestamp: new Date(),
       }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
         role: 'assistant',
-        content: `Guest concierge unavailable: ${message}. Check the configured model service in Admin settings.`,
+        content: `Guest concierge unavailable: ${message}.`,
         timestamp: new Date(),
       }]);
     } finally {
