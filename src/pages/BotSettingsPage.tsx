@@ -297,6 +297,30 @@ export default function BotSettingsPage() {
     setFaqs(prev => prev.map(item => item.id === id ? { ...item, active } : item));
   };
 
+  const startEdit = (item: FaqItem) => {
+    setEditingId(item.id);
+    setEditDraft({ question: item.question, keywords: item.keywords, answer: item.answer });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft({ question: '', keywords: '', answer: '' });
+  };
+
+  const saveEdit = async (id: string) => {
+    const question = editDraft.question.trim();
+    const answer = editDraft.answer.trim();
+    const keywords = editDraft.keywords.trim();
+    if (!question || !answer) return toast.error('Question and answer are required');
+    const result = await (supabase.from('guest_faq_memory') as any)
+      .update({ question, keywords, answer })
+      .eq('id', id);
+    if (result.error) return toast.error(result.error.message);
+    setFaqs(prev => prev.map(item => item.id === id ? { ...item, question, keywords, answer } : item));
+    cancelEdit();
+    toast.success('Answer updated');
+  };
+
   const deleteFaq = async (id: string) => {
     const result = await (supabase.from('guest_faq_memory') as any).delete().eq('id', id);
     if (result.error) return toast.error(result.error.message);
