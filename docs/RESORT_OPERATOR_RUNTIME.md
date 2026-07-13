@@ -5,37 +5,67 @@ One central agent. Telegram, `/admin/operator`, guest portal, and staff screens 
 ## Operating loop
 
 ```
-loadResortState → plan (deterministic, goal-driven) → execute safe actions
-→ queue sensitive actions as pending_approval cases → verify open cases against the DATABASE
-→ retry → escalate past SLA → audit everything → repeat
+loadResortState → plan (deterministic, goal-driven) → LLM triage per case (priority + explanation)
+→ execute safe actions → queue sensitive actions as pending_approval cases
+→ verify open cases against the DATABASE → retry → escalate past SLA → audit everything → repeat
 ```
 
 ## Components (all in `supabase/functions/resort-operator/`)
 
 | File | Layer |
 |---|---|
-| `system-map.ts` | Machine-readable tool registry, tables, approval boundaries |
+| `system-map.ts` | Machine-readable tool registry, tables, approval boundaries — all 9 domains |
 | `state.ts` | Unified resort state loader (read-only) |
 | `cases.ts` | Shared case model helpers (idempotent open, history, resolve, escalate) |
 | `planner.ts` | Compares state to permanent goals, emits prioritized actions with verification rules |
+| `brain.ts` | LLM judgment layer: per-case triage + admin chat (`ask`). OpenRouter, hard timeouts, deterministic fallback |
 | `executor.ts` | Executes safe actions, enforces the approval boundary, verifies, retries, escalates |
-| `index.ts` | HTTP entrypoint: `cycle`, `state`, `decide` |
+| `index.ts` | HTTP entrypoint: `cycle`, `state`, `ask`, `decide` |
 | `loop_test.ts` | In-memory proof of Flow A + Flow B (`deno test --no-lock loop_test.ts`) |
 
 Data: `ops_cases` table (migration `20260712080000_ops_cases.sql`). One open case per source record enforced by unique index.
 
+## Domains (all live)
+
+`guest_request`, `unpaid_balance`, `housekeeping`, `maintenance`, `reservation_exception`, `arrival`, `tour`, `fnb` (stuck orders + stale open tabs), `integration` (failed webhooks/PMS sync).
+
+- **arrival**: today's booking not checked in by 14:00 Manila → high case; by 18:00 → urgent. Verified by `checked_in_at` (or booking closed out).
+- **fnb stale tab**: tab opened on a previous Manila day and still open → case for cashier. Verified when `tabs.status` is no longer open.
+- **integration**: `webhook_events.status = failed` → case for management. Verified when the event is no longer failed.
+
+## LLM layer (`brain.ts`)
+
+- **Triage** — every newly opened case gets one Haiku call: refined priority (validated against low/medium/high/urgent) + one manager-readable sentence. Logged to `ops_cases.history` as `llm_triage` with model, tokens, and latency. Any failure (no key, timeout, bad JSON) → planner values win; the loop NEVER stalls on a provider.
+- **Ask** — `{ action: "ask", question }` loads live state, digests it (counts + top items per domain), and answers in ≤180 words. Facts only from state; never claims an action was executed.
+
+Env on the `resort-operator` function:
+
+| Var | Meaning |
+|---|---|
+| `OPENROUTER_API_KEY` | Enables the LLM layer (absent = silently off, loop still runs) |
+| `OPERATOR_MODEL` | Default `anthropic/claude-haiku-4-5` |
+| `AGENT_LLM_ENABLED` | Set `false` = kill switch without removing the key |
+| `INTERNAL_FN_SECRET` | Shared with resort-agent-loop / DB triggers |
+| `APP_URL` | Referer sent to OpenRouter |
+
 ## Hard safety boundary
 
-`request_payment_action` and anything in `FORBIDDEN_WITHOUT_APPROVAL` only ever create a `pending_approval` case. The agent never performs payments, refunds, booking changes, deletions, or guest-facing commitments. Approval happens on `/admin/operator` (Live operational cases panel) and calls `{action:"decide"}`.
+`request_payment_action` and anything in `FORBIDDEN_WITHOUT_APPROVAL` only ever create a `pending_approval` case. The agent never performs payments, refunds, booking changes, deletions, or guest-facing commitments. The LLM can never widen this: the boundary is enforced in `executor.ts` after triage, independent of model output. Approval happens on `/admin/operator` (Live operational cases panel) and calls `{action:"decide"}`.
 
 ## Verification
 
-The agent never trusts its own claims. Rules in `executor.ts` re-read the database:
-- `guest_request_completed` — status/completed_at on guest_requests
-- `balance_cleared` — room_rate + addons_total − paid_amount ≤ 0
-- `housekeeping_order_exists`, `task_exists`
+The agent never trusts its own claims (or the model's). Rules in `executor.ts` re-read the database:
+
+- `guest_request_completed`, `balance_cleared`, `housekeeping_order_exists`, `housekeeping_cleaning_completed`, `task_exists`, `task_completed`, `tour_confirmed`, `order_closed`
+- `guest_checked_in` — booking has `checked_in_at` (or was closed out)
+- `tab_closed` — tab status no longer open
+- `webhook_resolved` — event no longer `failed`
 
 Failed verification past `due_at` → retry (max 2) → escalate.
+
+## Admin chat
+
+`OperatorChat` on `/admin/operator` calls `{action:"ask"}` directly on this function. No local runtime required; the guest-facing Hermes widget is a separate system.
 
 ## Deploy
 
@@ -46,14 +76,11 @@ Failed verification past `due_at` → retry (max 2) → escalate.
    select vault.create_secret('<PROJECT_URL>', 'project_url');
    select vault.create_secret('<SERVICE_ROLE_KEY>', 'service_role_key');
    ```
-4. Confirm secrets on the function env: `INTERNAL_FN_SECRET` (shared with resort-agent-loop).
+4. Confirm secrets on the function env: `INTERNAL_FN_SECRET`, `OPENROUTER_API_KEY`, optional `OPERATOR_MODEL`.
 
 ## Triggers
 
 - Every 30 min via pg_cron (`resort-operator-cycle`).
 - Immediately on new guest request (DB trigger).
-- Manually from `/admin/operator` ("Run full resort loop" now includes the operator cycle).
-
-## Extending to more domains
-
-Add a detection block in `planner.ts` + a verification rule in `executor.ts`. The case model is domain-agnostic; order per product plan: housekeeping → maintenance → arrivals/departures → reservation exceptions → payments → tours → F&B.
+- Manually from `/admin/operator` ("Run full resort loop" includes the operator cycle).
+- On demand via the operator chat (`ask` reads state; it does not run a cycle).

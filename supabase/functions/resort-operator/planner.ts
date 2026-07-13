@@ -2,6 +2,9 @@
 // emits prioritized PlannedActions. Deterministic core (no LLM dependency) so
 // the operating loop never stalls when a provider is down. Every action names
 // its tool, verification rule and approval requirement up front.
+//
+// Domains covered: guest_request, unpaid_balance, housekeeping, maintenance,
+// reservation_exception, arrival, tour, fnb, integration.
 
 import type { ResortState } from "./state.ts";
 
@@ -29,6 +32,16 @@ export interface PlannedAction {
 }
 
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 } as const;
+
+/** Current hour in Manila (UTC+8), 0–23. */
+function manilaHour(nowIso: string): number {
+  return (new Date(nowIso).getUTCHours() + 8) % 24;
+}
+
+/** Manila calendar date (YYYY-MM-DD) for an ISO timestamp. */
+function manilaDateOf(iso: string): string {
+  return new Date(new Date(iso).getTime() + 8 * 3_600_000).toISOString().slice(0, 10);
+}
 
 export function plan(state: ResortState): PlannedAction[] {
   const actions: PlannedAction[] = [];
@@ -105,33 +118,44 @@ export function plan(state: ResortState): PlannedAction[] {
     }
   }
 
-  // ── housekeeping / room readiness (goal 2, 3) ────────────────────────────
-  for (const u of state.dirtyUnitsWithoutOrder) {
-    if (!has("housekeeping", "units", u.id)) {
-      const forArrival = state.unreadyArrivals.some((a: any) => a.resort_ops_units?.name === u.unit_name);
-      actions.push({
-        key: `create_housekeeping:${u.id}`,
-        tool: "create_housekeeping_order",
-        domain: "housekeeping",
-        priority: forArrival ? "urgent" : "medium",
-        reason: "Goal 2: dirty room needs a cleaning order",
-        approvalRequired: false,
-        verificationRule: "housekeeping_order_exists",
-        input: { unit_name: u.unit_name },
-        case: {
-          domain: "housekeeping",
-          issue_type: "dirty_unit",
-          source_table: "units",
-          source_id: u.id,
-          department: "housekeeping",
-          unit_label: u.unit_name,
-          risk: forArrival ? "Arrival today with dirty unit and no order" : "Dirty unit has no cleaning order",
-          required_action: `Create housekeeping order for ${u.unit_name}`,
-        } as any,
-      });
+  // ── arrivals: check-in not completed (goal 2, 3) ─────────────────────────
+  // A guest arriving today who is still not checked in by mid-afternoon Manila
+  // is a service risk (no-show, lost booking, or reception miss).
+  {
+    const hour = manilaHour(state.now);
+    if (hour >= 14) {
+      for (const a of state.arrivals) {
+        if (a.checked_in_at) continue;
+        if (has("arrival", "resort_ops_bookings", a.id)) continue;
+        const guest = a.resort_ops_guests?.name ?? "";
+        const unit = a.resort_ops_units?.name ?? "";
+        actions.push({
+          key: `case:arrival:${a.id}`,
+          tool: "create_task",
+          domain: "arrival",
+          priority: hour >= 18 ? "urgent" : "high",
+          reason: "Goal 2/3: today's arrival not checked in — confirm guest or free the room",
+          approvalRequired: false,
+          verificationRule: "guest_checked_in",
+          input: { skipTask: true },
+          case: {
+            domain: "arrival",
+            issue_type: "pending_checkin",
+            source_table: "resort_ops_bookings",
+            source_id: a.id,
+            booking_id: a.id,
+            guest_name: guest,
+            department: "reception",
+            risk: `Arrival today (${unit || "unassigned unit"}) not checked in by ${hour}:00 Manila`,
+            due_at: `${state.today}T13:00:00Z`, // 21:00 Manila
+            required_action: `Contact ${guest || "the guest"} and complete check-in for ${unit || "their unit"}, or release the booking`,
+          },
+        });
+      }
     }
   }
 
+  // ── housekeeping / room readiness (goal 2, 3) ────────────────────────────
   for (const h of state.pendingHousekeeping) {
     if (!has("housekeeping", "housekeeping_orders", h.id)) {
       const forArrival = state.unreadyArrivals.some((a: any) => a.resort_ops_units?.name === h.unit_name);
@@ -159,31 +183,6 @@ export function plan(state: ResortState): PlannedAction[] {
   }
 
   // ── maintenance (goal 2, 3) ──────────────────────────────────────────────
-  for (const h of state.pendingHousekeeping) {
-    if (h.damage_notes && String(h.damage_notes).trim().length > 0 && !has("maintenance", "housekeeping_orders", h.id)) {
-      actions.push({
-        key: `case:maintenance_damage:${h.id}`,
-        tool: "create_task",
-        domain: "maintenance",
-        priority: "high",
-        reason: "Goal 2/3: damage reported during housekeeping must be tracked",
-        approvalRequired: false,
-        verificationRule: "task_completed",
-        input: { skipTask: true },
-        case: {
-          domain: "maintenance",
-          issue_type: "damage_from_housekeeping",
-          source_table: "housekeeping_orders",
-          source_id: h.id,
-          department: "maintenance",
-          unit_label: h.unit_name,
-          risk: `Damage noted in ${h.unit_name}: ${String(h.damage_notes).slice(0, 120)}`,
-          required_action: `Inspect and repair damage in ${h.unit_name}`,
-        } as any,
-      });
-    }
-  }
-
   for (const t of state.maintenanceTasks) {
     if (!has("maintenance", "resort_ops_tasks", t.id)) {
       actions.push({
@@ -221,59 +220,6 @@ export function plan(state: ResortState): PlannedAction[] {
     });
   }
 
-  // ── arrivals / departures (goal 3, 4) ────────────────────────────────────
-  for (const a of state.pendingArrivals) {
-    if (!has("arrival", "resort_ops_bookings", a.id)) {
-      actions.push({
-        key: `case:arrival:${a.id}`,
-        tool: "create_task",
-        domain: "arrival",
-        priority: "high",
-        reason: "Goal 3: guest arriving soon and not yet checked in",
-        approvalRequired: false,
-        verificationRule: "guest_checked_in",
-        input: { skipTask: true },
-        case: {
-          domain: "arrival",
-          issue_type: "pending_checkin",
-          source_table: "resort_ops_bookings",
-          source_id: a.id,
-          booking_id: a.id,
-          guest_name: a.resort_ops_guests?.name ?? "",
-          department: "reception",
-          risk: `Guest ${a.resort_ops_guests?.name ?? ""} arriving ${a.check_in} and not checked in`,
-          required_action: `Nudge reception to check in ${a.resort_ops_guests?.name ?? "guest"} (${a.resort_ops_units?.name ?? "no unit"})`,
-        },
-      });
-    }
-  }
-
-  for (const d of state.pendingDepartures) {
-    if (!has("departure", "resort_ops_bookings", d.id)) {
-      actions.push({
-        key: `case:departure:${d.id}`,
-        tool: "create_task",
-        domain: "departure",
-        priority: d.check_out === state.today ? "high" : "medium",
-        reason: "Goal 4: guest departing and not yet checked out",
-        approvalRequired: false,
-        verificationRule: "guest_checked_out",
-        input: { skipTask: true },
-        case: {
-          domain: "departure",
-          issue_type: "pending_checkout",
-          source_table: "resort_ops_bookings",
-          source_id: d.id,
-          booking_id: d.id,
-          guest_name: d.resort_ops_guests?.name ?? "",
-          department: "reception",
-          risk: `Guest ${d.resort_ops_guests?.name ?? ""} departing ${d.check_out} and not checked out`,
-          required_action: `Prepare checkout for ${d.resort_ops_guests?.name ?? "guest"}`,
-        },
-      });
-    }
-  }
-
   // ── reservation exceptions (goal 4) ──────────────────────────────────────
   for (const t of state.reservationExceptionTasks) {
     if (!has("reservation_exception", "resort_ops_tasks", t.id)) {
@@ -295,59 +241,6 @@ export function plan(state: ResortState): PlannedAction[] {
           risk: t.description || t.title,
           due_at: t.due_date ? `${t.due_date}T17:00:00Z` : null,
           required_action: t.title,
-        },
-      });
-    }
-  }
-
-  for (const w of state.reservationConflicts) {
-    const sourceId = w.id;
-    if (!has("reservation_conflict", "webhook_events", sourceId)) {
-      actions.push({
-        key: `case:reservation_conflict:${sourceId}`,
-        tool: "create_task",
-        domain: "reservation_conflict",
-        priority: "high",
-        reason: "Goal 4: Sirvoy webhook conflict needs manual review",
-        approvalRequired: false,
-        verificationRule: "webhook_processed",
-        input: { webhook_id: sourceId },
-        case: {
-          domain: "reservation_conflict",
-          issue_type: w.event_type || "sirvoy_conflict",
-          source_table: "webhook_events",
-          source_id: sourceId,
-          department: "reception",
-          risk: `Sirvoy conflict: ${w.error_message || "unprocessed webhook"}`,
-          required_action: "Review Sirvoy conflict and reconcile booking",
-        },
-      });
-    }
-  }
-
-  // ── payments (goal 4, 10) ─────────────────────────────────────────────────
-  for (const d of state.unpaidDepartures) {
-    if (!has("unpaid_balance", "resort_ops_bookings", d.booking_id)) {
-      actions.push({
-        key: `case:unpaid_balance:${d.booking_id}`,
-        tool: "request_payment_action",
-        domain: "unpaid_balance",
-        priority: d.check_out === state.today ? "urgent" : "high",
-        reason: `Goal 4: departure ${d.check_out} with unpaid balance ${d.balance}`,
-        approvalRequired: true,
-        verificationRule: "balance_cleared",
-        input: { booking_id: d.booking_id, balance: d.balance },
-        case: {
-          domain: "unpaid_balance",
-          issue_type: "departure_unpaid",
-          source_table: "resort_ops_bookings",
-          source_id: d.booking_id,
-          booking_id: d.booking_id,
-          guest_name: d.guest_name,
-          department: "reception",
-          risk: `Revenue at risk: ${d.balance} unpaid, checkout ${d.check_out}`,
-          due_at: `${d.check_out}T10:00:00Z`,
-          required_action: `Collect ${d.balance} before checkout (approval required for guest-facing payment action)`,
         },
       });
     }
@@ -382,7 +275,7 @@ export function plan(state: ResortState): PlannedAction[] {
     }
   }
 
-  // ── F&B (goal 1, 3) ──────────────────────────────────────────────────────
+  // ── F&B stuck orders (goal 1, 3) ─────────────────────────────────────────
   for (const o of state.stuckOrders) {
     if (!has("fnb", "orders", o.id)) {
       actions.push({
@@ -407,52 +300,55 @@ export function plan(state: ResortState): PlannedAction[] {
     }
   }
 
-  for (const t of state.tabsPastCheckout) {
-    if (!has("fnb_tab", "tabs", t.id)) {
-      actions.push({
-        key: `case:fnb_tab:${t.id}`,
-        tool: "create_task",
-        domain: "fnb_tab",
-        priority: "high",
-        reason: "Goal 4: open tab past normal checkout window",
-        approvalRequired: false,
-        verificationRule: "tab_closed",
-        input: { skipTask: true },
-        case: {
-          domain: "fnb_tab",
-          issue_type: "open_tab",
-          source_table: "tabs",
-          source_id: t.id,
-          department: "cashier",
-          risk: `Tab open since ${t.created_at} for ${t.guest_name || t.location_detail}`,
-          required_action: `Close or settle open tab at ${t.location_detail || "unknown location"}`,
-        },
-      });
-    }
+  // ── F&B stale open tabs (goal 4) ─────────────────────────────────────────
+  // A tab opened on a previous Manila day and still open is unbilled revenue.
+  for (const t of state.openTabs) {
+    if (!t.created_at || manilaDateOf(t.created_at) >= state.today) continue;
+    if (has("fnb", "tabs", t.id)) continue;
+    actions.push({
+      key: `case:fnb_tab:${t.id}`,
+      tool: "create_task",
+      domain: "fnb",
+      priority: "high",
+      reason: "Goal 4: tab open past its service day — bill or close it",
+      approvalRequired: false,
+      verificationRule: "tab_closed",
+      input: { skipTask: true },
+      case: {
+        domain: "fnb",
+        issue_type: "stale_open_tab",
+        source_table: "tabs",
+        source_id: t.id,
+        guest_name: t.guest_name ?? "",
+        department: "cashier",
+        risk: `Tab open since ${t.created_at} (${t.location_detail || "no location"}) — unbilled revenue`,
+        required_action: `Settle or close tab for ${t.guest_name || "unknown guest"} (${t.location_detail || "no location"})`,
+      },
+    });
   }
 
-  for (const a of state.lowStockAssets) {
-    if (!has("inventory", "resort_ops_assets", a.id)) {
-      actions.push({
-        key: `case:inventory:${a.id}`,
-        tool: "create_task",
-        domain: "inventory",
-        priority: "medium",
-        reason: "Goal 3: low stock can cause service failure",
-        approvalRequired: false,
-        verificationRule: "stock_replenished",
-        input: { skipTask: true },
-        case: {
-          domain: "inventory",
-          issue_type: "low_stock",
-          source_table: "resort_ops_assets",
-          source_id: a.id,
-          department: "kitchen",
-          risk: `${a.name} balance is ${a.balance}`,
-          required_action: `Restock ${a.name}`,
-        },
-      });
-    }
+  // ── integration: failed webhooks / PMS sync (goal 6) ─────────────────────
+  for (const w of state.webhookFailures) {
+    if (has("integration", "webhook_events", w.id)) continue;
+    actions.push({
+      key: `case:integration:${w.id}`,
+      tool: "create_task",
+      domain: "integration",
+      priority: "high",
+      reason: "Goal 6: failed sync can silently corrupt bookings",
+      approvalRequired: false,
+      verificationRule: "webhook_resolved",
+      input: { skipTask: true },
+      case: {
+        domain: "integration",
+        issue_type: w.event_type || w.type || "webhook_failed",
+        source_table: "webhook_events",
+        source_id: w.id,
+        department: "management",
+        risk: `Webhook failed (${w.provider || w.source || "external"}): ${(w.error || w.last_error || "").toString().slice(0, 120)}`,
+        required_action: "Investigate failed webhook and reprocess or mark handled",
+      },
+    });
   }
 
   // ── verification pass on open cases ──────────────────────────────────────

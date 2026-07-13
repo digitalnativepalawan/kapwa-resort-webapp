@@ -9,13 +9,14 @@
 // Actions:
 //   { action: "cycle" }                                  run one full loop cycle
 //   { action: "state" }                                  return unified state only
+//   { action: "ask", question }                          answer an admin question from live state (LLM)
 //   { action: "decide", case_id, approve, decided_by }   approve/reject a pending case
-//   { action: "execute", action_type, payload, actor }  execute an allowed action directly
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadResortState } from "./state.ts";
 import { plan } from "./planner.ts";
-import { execute, decideCase, runAction } from "./executor.ts";
+import { execute, decideCase } from "./executor.ts";
+import { askAgent, llmEnabled, operatorModel } from "./brain.ts";
 import { TOOLS, DOMAINS } from "./system-map.ts";
 
 const corsHeaders = {
@@ -78,19 +79,30 @@ Deno.serve(async (req) => {
       return respond({ ok: true, case_id: body.case_id, approved: body.approve === true });
     }
 
-    if (action === "execute") {
-      const { action_type, payload, actor } = body;
-      if (!action_type || !payload) {
-        return respond({ ok: false, error: "action_type and payload required" }, 400);
-      }
-      const result = await runAction(supabase, String(action_type), payload, String(actor || "operator"));
-      return respond({ ok: true, result });
-    }
-
     const state = await loadResortState(supabase);
 
     if (action === "state") {
       return respond({ ok: true, state, domains: DOMAINS, tools: TOOLS.map((t) => t.name) });
+    }
+
+    if (action === "ask") {
+      const question = String(body.question ?? "").trim();
+      if (!question) return respond({ ok: false, error: "question required" }, 400);
+      if (!llmEnabled()) {
+        return respond({ ok: false, error: "llm_unavailable", detail: "Set OPENROUTER_API_KEY on the resort-operator function (or unset AGENT_LLM_ENABLED=false)." }, 503);
+      }
+      const reply = await askAgent(question.slice(0, 1000), state);
+      if (!reply) {
+        return respond({ ok: false, error: "llm_failed", detail: "The model did not return an answer. Try again." }, 502);
+      }
+      return respond({
+        ok: true,
+        answer: reply.answer,
+        model: reply.model,
+        tokens: reply.tokens,
+        ms: reply.ms,
+        generated_at: new Date().toISOString(),
+      });
     }
 
     // Full cycle
@@ -100,6 +112,7 @@ Deno.serve(async (req) => {
 
     return respond({
       ok: true,
+      llm: { enabled: llmEnabled(), model: llmEnabled() ? operatorModel() : null },
       cycle: {
         started_at: state.now,
         planned: actions.length,

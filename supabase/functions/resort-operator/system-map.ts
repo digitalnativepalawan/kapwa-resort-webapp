@@ -1,6 +1,6 @@
 // Machine-readable map of the KAPWA backoffice: data sources, tools, side effects,
-// approval boundaries and verification methods. Consumed by the planner and executor.
-// Generated from repository inventory 2026-07-12 (commit 0ed699c lineage).
+// approval boundaries and verification methods. Consumed by the planner, executor,
+// and the LLM brain.
 
 export interface ToolDef {
   name: string;                 // edge function or internal action name
@@ -19,14 +19,15 @@ export const DOMAINS = [
   "unpaid_balance",
   "housekeeping",
   "maintenance",
+  "reservation_exception",
   "arrival",
   "departure",
-  "reservation_exception",
   "reservation_conflict",
   "tour",
   "fnb",
   "fnb_tab",
   "inventory",
+  "integration",
 ] as const;
 
 export const TABLES = {
@@ -38,7 +39,7 @@ export const TABLES = {
   tasks: "resort_ops_tasks",
   tabs: "tabs",
   orders: "orders",
-  tours: "guest_tours",
+  tours: "tour_bookings",
   expenses: "resort_ops_expenses",
   webhookEvents: "webhook_events",
   auditLog: "audit_log",
