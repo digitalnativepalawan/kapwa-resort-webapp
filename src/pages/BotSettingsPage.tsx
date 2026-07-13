@@ -114,23 +114,21 @@ export default function BotSettingsPage() {
     })();
   }, []);
 
-  // ── Auto-detect Ollama models when provider is ollama ──────────────────────
+  // ── Auto-detect Ollama models (calls Ollama directly from browser) ────────
   const detectOllama = async (url?: string) => {
     const baseUrl = (url || ollamaUrl).replace(/\/$/, '');
     setOllamaDetecting(true);
     setOllamaAvailable(null);
     try {
-      const res = await fetch(`${RUNTIME_URL}/providers/ollama/detect`, {
-        method: 'POST',
-        headers: adminHeaders(),
-        body: JSON.stringify({ baseUrl }),
-      });
+      const res = await fetch(`${baseUrl}/api/tags`);
+      if (!res.ok) throw new Error(`Ollama returned ${res.status}`);
       const data = await res.json();
-      if (data.available && data.models?.length) {
-        setOllamaModels(data.models);
+      const models = (data.models || []).map((m: any) => m.name).filter(Boolean);
+      if (models.length > 0) {
+        setOllamaModels(models);
         setOllamaAvailable(true);
-        if (!data.models.includes(ollamaModel) && data.models.length > 0) {
-          setOllamaModel(data.models[0]);
+        if (!models.includes(ollamaModel)) {
+          setOllamaModel(models[0]);
         }
       } else {
         setOllamaModels([]);
@@ -151,15 +149,20 @@ export default function BotSettingsPage() {
     }
   }, [runtimeLoaded, provider]);
 
-  // ── Load OpenRouter models when provider is openrouter ─────────────────────
+  // ── Load OpenRouter models (calls OpenRouter directly from browser) ────────
   const loadOpenRouterModels = async () => {
     setOpenrouterLoading(true);
     try {
-      const res = await fetch(`${RUNTIME_URL}/providers/openrouter/models`, {
-        headers: adminHeaders(),
-      });
-      const data = await res.json();
-      setOpenrouterModels(data.models || []);
+      const res = await fetch('https://openrouter.ai/api/v1/models');
+      if (!res.ok) throw new Error(`OpenRouter returned ${res.status}`);
+      const payload = await res.json();
+      const models = (payload.data || []).map((m: any) => ({
+        id: m.id,
+        name: m.name || m.id,
+        free: Number(m.pricing?.prompt || 0) === 0 && Number(m.pricing?.completion || 0) === 0,
+        contextLength: m.context_length || null,
+      })).sort((a: any, b: any) => Number(b.free) - Number(a.free) || a.name.localeCompare(b.name));
+      setOpenrouterModels(models);
     } catch {
       setOpenrouterModels([]);
     } finally {
