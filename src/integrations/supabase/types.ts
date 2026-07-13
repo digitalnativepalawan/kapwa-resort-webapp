@@ -848,6 +848,7 @@ export type Database = {
           escalated_at: string | null
           guest_name: string
           id: string
+          priority: string | null
           request_type: string
           resolution_notes: string
           room_id: string | null
@@ -869,6 +870,7 @@ export type Database = {
           escalated_at?: string | null
           guest_name?: string
           id?: string
+          priority?: string | null
           request_type?: string
           resolution_notes?: string
           room_id?: string | null
@@ -890,6 +892,7 @@ export type Database = {
           escalated_at?: string | null
           guest_name?: string
           id?: string
+          priority?: string | null
           request_type?: string
           resolution_notes?: string
           room_id?: string | null
@@ -2442,8 +2445,11 @@ export type Database = {
           breakfast_end_time: string | null
           breakfast_start_time: string | null
           created_at: string
+          hermes_sub_provider: string
           id: string
           kitchen_whatsapp_number: string
+          openrouter_api_key: string | null
+          openrouter_model: string
           updated_at: string
         }
         Insert: {
@@ -2456,8 +2462,11 @@ export type Database = {
           breakfast_end_time?: string | null
           breakfast_start_time?: string | null
           created_at?: string
+          hermes_sub_provider?: string
           id?: string
           kitchen_whatsapp_number?: string
+          openrouter_api_key?: string | null
+          openrouter_model?: string
           updated_at?: string
         }
         Update: {
@@ -2470,8 +2479,11 @@ export type Database = {
           breakfast_end_time?: string | null
           breakfast_start_time?: string | null
           created_at?: string
+          hermes_sub_provider?: string
           id?: string
           kitchen_whatsapp_number?: string
+          openrouter_api_key?: string | null
+          openrouter_model?: string
           updated_at?: string
         }
         Relationships: []
