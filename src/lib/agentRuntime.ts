@@ -1,20 +1,18 @@
 // Bridge from the browser to the local KAPWA agent runtime in server/index.js.
-// The runtime holds the encrypted provider settings (OpenRouter / Ollama / Hermes)
-// and is admin-token protected. Edge functions cannot reach it (it's on the
-// operator's machine), so the browser is the join point.
+// The runtime holds the encrypted provider settings (OpenRouter / Ollama)
+// and is admin-token protected.
 
 const RUNTIME_URL = (import.meta.env.VITE_AGENT_RUNTIME_URL as string | undefined)?.replace(/\/$/, "") || "";
 const ADMIN_TOKEN_KEY = "kapwa_admin_token";
 
 export interface RuntimeSettings {
   enabled: boolean;
-  mode: "openrouter" | "ollama" | "hermes";
+  mode: "openrouter" | "ollama";
   openrouterModel: string;
   openrouterConfigured: boolean;
   openrouterKeyMasked: string | null;
   ollamaBaseUrl: string;
   ollamaModel: string;
-  hermesProvider: "openrouter" | "ollama";
   temperature: number;
   maxTokens: number;
 }
@@ -60,7 +58,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings | null> {
 export async function runtimeHealth(): Promise<{ ok: boolean; provider?: string; model?: string; error?: string }> {
   if (!RUNTIME_URL) return { ok: false, error: "Runtime URL is not configured" };
   try {
-    const res = await fetch(`${RUNTIME_URL}/hermes/health`);
+    const res = await fetch(`${RUNTIME_URL}/health`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data?.error || `Runtime returned ${res.status}` };
     return { ok: Boolean(data?.ok), provider: data?.provider, model: data?.model };
