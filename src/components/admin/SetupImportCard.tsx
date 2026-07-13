@@ -77,6 +77,7 @@ const IMPORT_ORDER: { file: string; table: string; conflict?: string }[] = [
   { file: 'staff_roles.csv', table: 'staff_roles' },
   { file: 'employee_roles.csv', table: 'employee_roles' },
   { file: 'employee_permissions.csv', table: 'employee_permissions' },
+  { file: 'guest_faq_memory.csv', table: 'guest_faq_memory' },
 ];
 
 const SetupImportCard = () => {
