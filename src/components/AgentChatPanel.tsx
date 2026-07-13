@@ -14,19 +14,21 @@ interface Message {
 
 
 
+type BotProvider = 'openrouter' | 'ollama';
+
 const defaultSettings = {
   enabled: true,
-  provider: 'ollama',
-  baseUrl: 'http://127.0.0.1:11434',
-  model: 'qwen2.5:3b',
+  provider: 'openrouter' as BotProvider,
+  ollamaUrl: 'http://127.0.0.1:11434',
+  ollamaModel: 'qwen2.5:3b',
   temperature: 0.2,
-  maxTokens: 140,
+  maxTokens: 500,
 };
 
 async function loadSharedBotData() {
   const [settingsResult, memoryResult] = await Promise.all([
     (supabase.from('settings') as any)
-      .select('bot_enabled, bot_base_url, bot_model, bot_temperature, bot_max_tokens')
+      .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens')
       .limit(1)
       .maybeSingle(),
     (supabase.from('guest_faq_memory') as any)
@@ -36,17 +38,59 @@ async function loadSharedBotData() {
   ]);
 
   const row = settingsResult.data;
+  const provider: BotProvider = row?.bot_provider === 'ollama' ? 'ollama' : 'openrouter';
   return {
     settings: {
       ...defaultSettings,
       enabled: row?.bot_enabled !== false,
-      baseUrl: row?.bot_base_url || defaultSettings.baseUrl,
-      model: row?.bot_model || defaultSettings.model,
+      provider,
+      ollamaUrl: row?.bot_base_url || defaultSettings.ollamaUrl,
+      ollamaModel: row?.bot_model || defaultSettings.ollamaModel,
       temperature: Number(row?.bot_temperature ?? defaultSettings.temperature),
       maxTokens: Number(row?.bot_max_tokens ?? defaultSettings.maxTokens),
     },
     memory: memoryResult.data || [],
   };
+}
+
+const GUEST_SYSTEM_PROMPT = `You are the guest concierge for BAIA Beachfront Boutique Lodge in San Vicente, Palawan. Never invent facts. If a fact is not in the Approved Q&A or confirmed info below, say: "I don't have that confirmed. Please ask the BAIA staff and I can help pass the request along." Keep replies warm, direct, and 1–3 short sentences. Taglish "po" is welcome.`;
+
+function buildSystemPrompt(memory: any[]): string {
+  if (!Array.isArray(memory) || !memory.length) return GUEST_SYSTEM_PROMPT;
+  const approved = memory
+    .filter(e => e && e.active !== false && e.question && e.answer)
+    .map(e => {
+      const kw = e.keywords?.trim() ? ` (keywords: ${e.keywords.trim()})` : '';
+      return `Q: ${String(e.question).trim()}${kw}\nA: ${String(e.answer).trim()}`;
+    })
+    .join('\n\n');
+  return approved
+    ? `${GUEST_SYSTEM_PROMPT}\n\n## Approved Q&A (staff-verified)\nIf the guest's question matches one of these by meaning or keywords, answer using the corresponding approved answer verbatim.\n\n${approved}`
+    : GUEST_SYSTEM_PROMPT;
+}
+
+async function callOllama(settings: typeof defaultSettings, systemPrompt: string, history: { role: string; content: string }[], userMessage: string): Promise<string> {
+  const baseUrl = settings.ollamaUrl.replace(/\/$/, '');
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.slice(-10),
+    { role: 'user', content: userMessage },
+  ];
+  const res = await fetch(`${baseUrl}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: settings.ollamaModel,
+      messages,
+      stream: false,
+      options: { temperature: settings.temperature, num_predict: settings.maxTokens },
+    }),
+  });
+  if (!res.ok) throw new Error(`Ollama ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const reply = data?.message?.content?.trim();
+  if (!reply) throw new Error('Ollama returned an empty response');
+  return reply;
 }
 
 export default function AgentChatPanel() {
