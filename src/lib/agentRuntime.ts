@@ -58,7 +58,7 @@ export async function getRuntimeSettings(): Promise<RuntimeSettings | null> {
 export async function runtimeHealth(): Promise<{ ok: boolean; provider?: string; model?: string; error?: string }> {
   if (!RUNTIME_URL) return { ok: false, error: "Runtime URL is not configured" };
   try {
-    const res = await fetch(`${RUNTIME_URL}/hermes/health`);
+    const res = await fetch(`${RUNTIME_URL}/health`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, error: data?.error || `Runtime returned ${res.status}` };
     return { ok: Boolean(data?.ok), provider: data?.provider, model: data?.model };
