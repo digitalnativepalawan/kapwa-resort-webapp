@@ -303,8 +303,8 @@ export default function BotSettingsPage() {
 
   const downloadAnswers = () => {
     const templateExample: FaqItem[] = [
-      { id: 'template-1', question: 'What time is breakfast?', keywords: ['breakfast', 'morning meal'], answer: 'Breakfast is served daily from 7:00 AM to 10:00 AM at the main dining area.', active: true, sort_order: 0 },
-      { id: 'template-2', question: 'What time is check-out?', keywords: ['checkout', 'check out'], answer: 'Check-out time is 11:00 AM. Late check-out may be available on request.', active: true, sort_order: 1 },
+      { id: 'template-1', question: 'What time is breakfast?', keywords: 'breakfast, morning meal', answer: 'Breakfast is served daily from 7:00 AM to 10:00 AM at the main dining area.', active: true, sort_order: 0 },
+      { id: 'template-2', question: 'What time is check-out?', keywords: 'checkout, check out', answer: 'Check-out time is 11:00 AM. Late check-out may be available on request.', active: true, sort_order: 1 },
     ];
     const isTemplate = faqs.length === 0;
     const payload = {
