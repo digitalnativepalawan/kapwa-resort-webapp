@@ -90,6 +90,7 @@ const CONFIG: TabDef[] = [
   { value: 'reports', label: 'Reports', perm: 'reports' },
   { value: 'inventory', label: 'Inventory', perm: 'inventory' },
   { value: 'resort-ops', label: 'Resort Ops', perm: 'resort_ops' },
+  { value: 'agent', label: 'Agent', perm: null },
   { value: 'audit', label: 'Audit', perm: null },
   { value: 'archive', label: 'Archive', perm: null },
   { value: 'guest-portal', label: 'Guest Portal', perm: null },
@@ -1071,6 +1072,15 @@ const AdminPage = () => {
           {(isAdmin || hasAccess(perms, 'resort_ops')) && (
             <TabsContent value="resort-ops">
               <ResortOpsDashboard readOnly={readOnly('resort_ops')} />
+            </TabsContent>
+          )}
+
+          {/* AGENT SETTINGS TAB */}
+          {isAdmin && (
+            <TabsContent value="agent">
+              <Button variant="outline" onClick={() => navigate('/admin/bot-settings')} className="mb-4">
+                Open Agent Settings →
+              </Button>
             </TabsContent>
           )}
 
