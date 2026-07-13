@@ -109,6 +109,7 @@ const SetupExportCard = () => {
         employeeRolesResult,
         employeePermissionsResult,
         staffRolesResult,
+        guestFaqMemoryResult,
       ] = await Promise.all([
         supabase.from('resort_profile').select('*').order('created_at'),
         (supabase.from('invoice_settings' as any) as any).select('*').order('created_at'),
@@ -126,6 +127,7 @@ const SetupExportCard = () => {
         supabase.from('employee_roles').select('*').order('created_at'),
         (supabase.from('employee_permissions' as any) as any).select('*').order('created_at'),
         (supabase.from('staff_roles' as any) as any).select('*').order('created_at'),
+        (supabase.from('guest_faq_memory' as any) as any).select('*').order('sort_order'),
       ]);
 
       const results = [
@@ -145,6 +147,7 @@ const SetupExportCard = () => {
         employeeRolesResult,
         employeePermissionsResult,
         staffRolesResult,
+        guestFaqMemoryResult,
       ];
 
       const failedResult = results.find((result) => result.error);
