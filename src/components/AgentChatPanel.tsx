@@ -119,19 +119,23 @@ export default function AgentChatPanel() {
     setLoading(true);
 
     try {
-      const { memory } = await loadSharedBotData();
+      const { settings, memory } = await loadSharedBotData();
+      if (!settings.enabled) throw new Error('Guest concierge is disabled in Admin settings.');
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const { data, error } = await supabase.functions.invoke('hermes-chat', {
-        body: { message: userMessage, memory, history },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
-      setMessages(current => [...current, {
-        role: 'assistant',
-        content: data?.reply || 'No response from the guest concierge.',
-        timestamp: new Date(),
-      }]);
+      let reply: string;
+      if (settings.provider === 'ollama') {
+        reply = await callOllama(settings, buildSystemPrompt(memory), history, userMessage);
+      } else {
+        const { data, error } = await supabase.functions.invoke('guest-chat', {
+          body: { message: userMessage, memory, history },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+        reply = data?.reply || 'No response from the guest concierge.';
+      }
+
+      setMessages(current => [...current, { role: 'assistant', content: reply, timestamp: new Date() }]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
