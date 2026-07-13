@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { message, context } = req.body ?? {};
+  const { message, context, memory } = req.body ?? {};
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'message is required' });
   }
@@ -58,8 +58,26 @@ export default async function handler(req, res) {
     const normalizedContext = typeof context === 'string' ? context.toLowerCase().trim() : '';
     if (normalizedContext === 'guest-concierge') {
       const guestPrompt = await loadGuestPrompt();
-      if (guestPrompt) {
-        prompt = `${guestPrompt}\n\nGuest says: ${message}`;
+      const parts = [];
+      if (guestPrompt) parts.push(guestPrompt);
+
+      if (Array.isArray(memory) && memory.length) {
+        const approved = memory
+          .filter(entry => entry && entry.active !== false && typeof entry.question === 'string' && typeof entry.answer === 'string')
+          .map(entry => {
+            const kw = typeof entry.keywords === 'string' && entry.keywords.trim() ? ` (keywords: ${entry.keywords.trim()})` : '';
+            return `Q: ${entry.question.trim()}${kw}\nA: ${entry.answer.trim()}`;
+          })
+          .join('\n\n');
+        if (approved) {
+          parts.push(
+            `## Approved Q&A (staff-verified)\nIf the guest's question matches one of these entries by meaning or keywords, answer using the corresponding approved answer verbatim. Otherwise follow the rules above.\n\n${approved}`
+          );
+        }
+      }
+
+      if (parts.length) {
+        prompt = `${parts.join('\n\n')}\n\nGuest says: ${message}`;
       }
     }
 
