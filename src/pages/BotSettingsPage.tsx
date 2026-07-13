@@ -60,7 +60,7 @@ export default function BotSettingsPage() {
 
   // Runtime settings from server
   const [runtimeLoaded, setRuntimeLoaded] = useState(false);
-  const [provider, setProvider] = useState<'ollama' | 'openrouter' | 'hermes'>('ollama');
+  const [provider, setProvider] = useState<'ollama' | 'openrouter'>('openrouter');
   const [ollamaUrl, setOllamaUrl] = useState('http://127.0.0.1:11434');
   const [ollamaModel, setOllamaModel] = useState('qwen2.5:3b');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
