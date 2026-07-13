@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Save, Trash2, ArrowLeft, Download, Upload, RefreshCw, Loader2, Wifi, WifiOff, Search } from 'lucide-react';
+import { Plus, Save, Trash2, ArrowLeft, Download, Upload, RefreshCw, Loader2, Wifi, WifiOff, Search, Pencil, X } from 'lucide-react';
 
 type FaqItem = {
   id: string;
@@ -85,6 +85,8 @@ export default function BotSettingsPage() {
   // FAQ state
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [form, setForm] = useState({ question: '', keywords: '', answer: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ question: string; keywords: string; answer: string }>({ question: '', keywords: '', answer: '' });
   const [loading, setLoading] = useState(true);
 
   const activeCount = useMemo(() => faqs.filter(item => item.active).length, [faqs]);
@@ -293,6 +295,30 @@ export default function BotSettingsPage() {
     const result = await (supabase.from('guest_faq_memory') as any).update({ active }).eq('id', id);
     if (result.error) return toast.error(result.error.message);
     setFaqs(prev => prev.map(item => item.id === id ? { ...item, active } : item));
+  };
+
+  const startEdit = (item: FaqItem) => {
+    setEditingId(item.id);
+    setEditDraft({ question: item.question, keywords: item.keywords, answer: item.answer });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditDraft({ question: '', keywords: '', answer: '' });
+  };
+
+  const saveEdit = async (id: string) => {
+    const question = editDraft.question.trim();
+    const answer = editDraft.answer.trim();
+    const keywords = editDraft.keywords.trim();
+    if (!question || !answer) return toast.error('Question and answer are required');
+    const result = await (supabase.from('guest_faq_memory') as any)
+      .update({ question, keywords, answer })
+      .eq('id', id);
+    if (result.error) return toast.error(result.error.message);
+    setFaqs(prev => prev.map(item => item.id === id ? { ...item, question, keywords, answer } : item));
+    cancelEdit();
+    toast.success('Answer updated');
   };
 
   const deleteFaq = async (id: string) => {
@@ -612,11 +638,29 @@ export default function BotSettingsPage() {
           <div className="space-y-3">
             {faqs.map(item => (
               <div key={item.id} className="border border-border rounded p-3 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div><p className="font-medium text-sm">{item.question}</p>{item.keywords && <p className="text-xs text-muted-foreground">Keywords: {item.keywords}</p>}</div>
-                  <div className="flex items-center gap-2"><Switch checked={item.active} onCheckedChange={active => toggleFaq(item.id, active)} /><Button size="icon" variant="ghost" onClick={() => deleteFaq(item.id)}><Trash2 className="w-4 h-4" /></Button></div>
-                </div>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.answer}</p>
+                {editingId === item.id ? (
+                  <div className="space-y-2">
+                    <Input value={editDraft.question} onChange={e => setEditDraft(d => ({ ...d, question: e.target.value }))} placeholder="Question" />
+                    <Input value={editDraft.keywords} onChange={e => setEditDraft(d => ({ ...d, keywords: e.target.value }))} placeholder="Keywords, comma separated" />
+                    <textarea className="w-full min-h-24 rounded-md border border-input bg-background px-3 py-2 text-sm" value={editDraft.answer} onChange={e => setEditDraft(d => ({ ...d, answer: e.target.value }))} placeholder="Answer" />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => saveEdit(item.id)}><Save className="w-4 h-4 mr-1" />Save</Button>
+                      <Button size="sm" variant="ghost" onClick={cancelEdit}><X className="w-4 h-4 mr-1" />Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div><p className="font-medium text-sm">{item.question}</p>{item.keywords && <p className="text-xs text-muted-foreground">Keywords: {item.keywords}</p>}</div>
+                      <div className="flex items-center gap-2">
+                        <Switch checked={item.active} onCheckedChange={active => toggleFaq(item.id, active)} />
+                        <Button size="icon" variant="ghost" onClick={() => startEdit(item)} aria-label="Edit answer"><Pencil className="w-4 h-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => deleteFaq(item.id)}><Trash2 className="w-4 h-4" /></Button>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.answer}</p>
+                  </>
+                )}
               </div>
             ))}
             {!loading && faqs.length === 0 && <p className="text-sm text-muted-foreground">No reusable guest answers yet.</p>}
