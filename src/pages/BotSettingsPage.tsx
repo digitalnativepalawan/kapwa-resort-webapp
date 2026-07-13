@@ -596,7 +596,7 @@ export default function BotSettingsPage() {
             <div><h2 className="font-display text-lg">Guest FAQ Memory</h2><p className="text-xs text-muted-foreground">{activeCount} active shared answers.</p></div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={loadSharedData} disabled={loading}><RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />Refresh</Button>
-              <Button variant="outline" onClick={downloadAnswers} disabled={faqs.length === 0}><Download className="w-4 h-4 mr-2" />Download</Button>
+              <Button variant="outline" onClick={downloadAnswers}><Download className="w-4 h-4 mr-2" />{faqs.length === 0 ? 'Template' : 'Download'}</Button>
               <Button variant="outline" onClick={() => importRef.current?.click()}><Upload className="w-4 h-4 mr-2" />Import</Button>
               <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) importAnswers(file); }} />
             </div>
