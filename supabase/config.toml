@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.integration-webhook]
 verify_jwt = false
+
+[functions.hermes-chat]
+verify_jwt = false
