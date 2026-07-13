@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, Save, Trash2, ArrowLeft, Download, Upload, RefreshCw, Loader2, Wifi, WifiOff, Search } from 'lucide-react';
+import { Plus, Save, Trash2, ArrowLeft, Download, Upload, RefreshCw, Loader2, Wifi, WifiOff, Search, Pencil, X } from 'lucide-react';
 
 type FaqItem = {
   id: string;
