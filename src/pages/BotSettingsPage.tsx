@@ -302,16 +302,29 @@ export default function BotSettingsPage() {
   };
 
   const downloadAnswers = () => {
-    const blob = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), answers: faqs }, null, 2)], { type: 'application/json' });
+    const templateExample: FaqItem[] = [
+      { id: 'template-1', question: 'What time is breakfast?', keywords: ['breakfast', 'morning meal'], answer: 'Breakfast is served daily from 7:00 AM to 10:00 AM at the main dining area.', active: true, sort_order: 0 },
+      { id: 'template-2', question: 'What time is check-out?', keywords: ['checkout', 'check out'], answer: 'Check-out time is 11:00 AM. Late check-out may be available on request.', active: true, sort_order: 1 },
+    ];
+    const isTemplate = faqs.length === 0;
+    const payload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      template: isTemplate,
+      note: 'Shared FAQ memory used by both the guest concierge and staff resort operator agents. Edit rows and re-import to sync to the backend.',
+      schema: { question: 'string', keywords: 'string[]', answer: 'string', active: 'boolean', sort_order: 'number' },
+      answers: isTemplate ? templateExample : faqs,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `kapwa-guest-answers-${new Date().toISOString().slice(0, 10)}.json`;
+    link.download = `kapwa-guest-answers${isTemplate ? '-template' : ''}-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-    toast.success(`${faqs.length} answers downloaded`);
+    toast.success(isTemplate ? 'Template downloaded — edit and re-import to seed answers' : `${faqs.length} answers downloaded`);
   };
 
   const importAnswers = async (file: File) => {
