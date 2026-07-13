@@ -75,7 +75,7 @@ export default function BotSettingsPage() {
   const [openrouterSearch, setOpenrouterSearch] = useState('');
   const [showFreeOnly, setShowFreeOnly] = useState(false);
 
-  const [hermesSubProvider, setHermesSubProvider] = useState<'ollama' | 'openrouter'>('ollama');
+  
 
   const [temperature, setTemperature] = useState(0.2);
   const [maxTokens, setMaxTokens] = useState(500);
@@ -96,18 +96,18 @@ export default function BotSettingsPage() {
     (async () => {
       try {
         const { data } = await (supabase.from('settings') as any)
-          .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens, openrouter_api_key, openrouter_model, hermes_sub_provider')
+          .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens, openrouter_api_key, openrouter_model')
           .limit(1)
           .maybeSingle();
         if (data) {
-          setProvider(data.bot_provider || 'ollama');
+          setProvider(data.bot_provider === 'ollama' ? 'ollama' : 'openrouter');
           setOllamaUrl(data.bot_base_url || 'http://127.0.0.1:11434');
           setOllamaModel(data.bot_model || 'qwen2.5:3b');
           setOpenrouterModel(data.openrouter_model || 'openai/gpt-4o-mini');
           if (data.openrouter_api_key) {
             setOpenrouterKeyMasked(`••••••••${data.openrouter_api_key.slice(-4)}`);
           }
-          setHermesSubProvider(data.hermes_sub_provider || 'ollama');
+          
           setTemperature(Number(data.bot_temperature ?? 0.2));
           setMaxTokens(Number(data.bot_max_tokens ?? 500));
           setAgentEnabled(data.bot_enabled !== false);
@@ -208,7 +208,7 @@ export default function BotSettingsPage() {
         bot_temperature: temperature,
         bot_max_tokens: maxTokens,
         openrouter_model: openrouterModel,
-        hermes_sub_provider: hermesSubProvider,
+        
       };
       if (provider === 'openrouter' && openrouterKey.trim()) {
         payload.openrouter_api_key = openrouterKey.trim();
@@ -404,11 +404,10 @@ export default function BotSettingsPage() {
             <Switch checked={agentEnabled} onCheckedChange={setAgentEnabled} />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'ollama', label: 'Ollama (Local)', desc: 'Runs on your machine' },
               { value: 'openrouter', label: 'OpenRouter (Cloud)', desc: 'Many models, some free' },
-              { value: 'hermes', label: 'Hermes Agent', desc: 'Local agent proxy' },
             ] as const).map(opt => (
               <button
                 key={opt.value}
@@ -553,31 +552,6 @@ export default function BotSettingsPage() {
           </section>
         )}
 
-        {/* ── Hermes Config ───────────────────────────────────────────────── */}
-        {provider === 'hermes' && (
-          <section className="border border-border rounded-lg p-4 space-y-4 bg-card">
-            <h2 className="font-display text-lg">Hermes Agent (Local Proxy)</h2>
-            <p className="text-xs text-muted-foreground">Hermes acts as a local agent that routes to a model provider underneath.</p>
-
-            <label className="text-sm space-y-1">
-              <span>Hermes uses which provider?</span>
-              <Select value={hermesSubProvider} onValueChange={v => setHermesSubProvider(v as 'ollama' | 'openrouter')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ollama">Ollama (Local Machine)</SelectItem>
-                  <SelectItem value="openrouter">OpenRouter (Cloud)</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-
-            {hermesSubProvider === 'ollama' && (
-              <p className="text-xs text-muted-foreground">Hermes will use the Ollama settings above ({ollamaModel}).</p>
-            )}
-            {hermesSubProvider === 'openrouter' && (
-              <p className="text-xs text-muted-foreground">Hermes will use the OpenRouter settings above ({openrouterModel}).</p>
-            )}
-          </section>
-        )}
 
         {/* ── Common Settings ─────────────────────────────────────────────── */}
         <section className="border border-border rounded-lg p-4 space-y-4 bg-card">
