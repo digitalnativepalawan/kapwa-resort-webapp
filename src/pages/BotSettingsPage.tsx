@@ -85,6 +85,8 @@ export default function BotSettingsPage() {
   // FAQ state
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [form, setForm] = useState({ question: '', keywords: '', answer: '' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{ question: string; keywords: string; answer: string }>({ question: '', keywords: '', answer: '' });
   const [loading, setLoading] = useState(true);
 
   const activeCount = useMemo(() => faqs.filter(item => item.active).length, [faqs]);
