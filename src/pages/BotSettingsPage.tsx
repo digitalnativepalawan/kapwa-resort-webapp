@@ -7,10 +7,6 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus, Save, Trash2, ArrowLeft, Download, Upload, RefreshCw, Loader2, Wifi, WifiOff, Search } from 'lucide-react';
-import { getRuntimeSettings, type RuntimeSettings } from '@/lib/agentRuntime';
-
-const RUNTIME_URL = (import.meta.env.VITE_AGENT_RUNTIME_URL as string | undefined)?.replace(/\/$/, '') || '';
-const ADMIN_TOKEN_KEY = 'kapwa_admin_token';
 
 type FaqItem = {
   id: string;
@@ -38,13 +34,6 @@ function normalizeFaq(item: any): FaqItem | null {
   };
 }
 
-function adminHeaders(): Record<string, string> {
-  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY) || localStorage.getItem(ADMIN_TOKEN_KEY);
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h['x-kapwa-admin-token'] = token;
-  return h;
-}
-
 interface OpenRouterModel {
   id: string;
   name: string;
@@ -52,9 +41,18 @@ interface OpenRouterModel {
   contextLength: number | null;
 }
 
-interface OllamaModel {
-  name: string;
-}
+const FALLBACK_OPENROUTER_MODELS: OpenRouterModel[] = [
+  { id: 'openai/gpt-4o-mini', name: 'OpenAI: GPT-4o Mini', free: false, contextLength: 128000 },
+  { id: 'openai/gpt-4o', name: 'OpenAI: GPT-4o', free: false, contextLength: 128000 },
+  { id: 'google/gemini-2.0-flash-001', name: 'Google: Gemini 2.0 Flash', free: false, contextLength: 1048576 },
+  { id: 'google/gemini-2.5-flash', name: 'Google: Gemini 2.5 Flash', free: false, contextLength: 1048576 },
+  { id: 'anthropic/claude-sonnet-4', name: 'Anthropic: Claude Sonnet 4', free: false, contextLength: 200000 },
+  { id: 'meta-llama/llama-4-scout', name: 'Meta: Llama 4 Scout', free: false, contextLength: 131072 },
+  { id: 'deepseek/deepseek-chat-v3-0324:free', name: 'DeepSeek: Chat V3 (free)', free: true, contextLength: 131072 },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Meta: Llama 3.3 70B (free)', free: true, contextLength: 131072 },
+  { id: 'google/gemma-4-31b-it:free', name: 'Google: Gemma 4 31B (free)', free: true, contextLength: 131072 },
+  { id: 'qwen/qwen3-235b-a22b:free', name: 'Qwen: Qwen3 235B (free)', free: true, contextLength: 131072 },
+];
 
 export default function BotSettingsPage() {
   const navigate = useNavigate();
@@ -91,25 +89,31 @@ export default function BotSettingsPage() {
 
   const activeCount = useMemo(() => faqs.filter(item => item.active).length, [faqs]);
 
-  // ── Load runtime settings from server ──────────────────────────────────────
+  // ── Load settings from Supabase ────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
-        const settings = await getRuntimeSettings();
-        if (settings) {
-          setProvider(settings.mode);
-          setOllamaUrl(settings.ollamaBaseUrl);
-          setOllamaModel(settings.ollamaModel);
-          setOpenrouterModel(settings.openrouterModel);
-          setOpenrouterKeyMasked(settings.openrouterKeyMasked);
-          setHermesSubProvider(settings.hermesProvider);
-          setTemperature(settings.temperature);
-          setMaxTokens(settings.maxTokens);
-          setAgentEnabled(settings.enabled);
-          setRuntimeLoaded(true);
+        const { data } = await (supabase.from('settings') as any)
+          .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens, openrouter_api_key, openrouter_model, hermes_sub_provider')
+          .limit(1)
+          .maybeSingle();
+        if (data) {
+          setProvider(data.bot_provider || 'ollama');
+          setOllamaUrl(data.bot_base_url || 'http://127.0.0.1:11434');
+          setOllamaModel(data.bot_model || 'qwen2.5:3b');
+          setOpenrouterModel(data.openrouter_model || 'openai/gpt-4o-mini');
+          if (data.openrouter_api_key) {
+            setOpenrouterKeyMasked(`••••••••${data.openrouter_api_key.slice(-4)}`);
+          }
+          setHermesSubProvider(data.hermes_sub_provider || 'ollama');
+          setTemperature(Number(data.bot_temperature ?? 0.2));
+          setMaxTokens(Number(data.bot_max_tokens ?? 500));
+          setAgentEnabled(data.bot_enabled !== false);
         }
       } catch {
-        // Server may be offline — keep defaults
+        // Column may not exist yet — keep defaults
+      } finally {
+        setRuntimeLoaded(true);
       }
     })();
   }, []);
@@ -150,31 +154,34 @@ export default function BotSettingsPage() {
   }, [runtimeLoaded, provider]);
 
   // ── Load OpenRouter models (calls OpenRouter directly from browser) ────────
-  const loadOpenRouterModels = async () => {
-    setOpenrouterLoading(true);
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/models');
-      if (!res.ok) throw new Error(`OpenRouter returned ${res.status}`);
-      const payload = await res.json();
-      const models = (payload.data || []).map((m: any) => ({
-        id: m.id,
-        name: m.name || m.id,
-        free: Number(m.pricing?.prompt || 0) === 0 && Number(m.pricing?.completion || 0) === 0,
-        contextLength: m.context_length || null,
-      })).sort((a: any, b: any) => Number(b.free) - Number(a.free) || a.name.localeCompare(b.name));
-      setOpenrouterModels(models);
-    } catch {
-      setOpenrouterModels([]);
-    } finally {
-      setOpenrouterLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (provider === 'openrouter' && runtimeLoaded) {
-      loadOpenRouterModels();
-    }
-  }, [provider, runtimeLoaded]);
+    if (provider !== 'openrouter' || !runtimeLoaded) return;
+    let cancelled = false;
+    (async () => {
+      setOpenrouterLoading(true);
+      try {
+        const headers: Record<string, string> = { 'HTTP-Referer': window.location.origin, 'X-Title': 'KAPWA' };
+        if (openrouterKey.trim()) {
+          headers['Authorization'] = `Bearer ${openrouterKey.trim()}`;
+        }
+        const res = await fetch('https://openrouter.ai/api/v1/models', { headers });
+        if (!res.ok) throw new Error(`OpenRouter returned ${res.status}`);
+        const payload = await res.json();
+        const models = (payload.data || []).map((m: any) => ({
+          id: m.id,
+          name: m.name || m.id,
+          free: Number(m.pricing?.prompt || 0) === 0 && Number(m.pricing?.completion || 0) === 0,
+          contextLength: m.context_length || null,
+        })).sort((a: any, b: any) => Number(b.free) - Number(a.free) || a.name.localeCompare(b.name));
+        if (!cancelled) setOpenrouterModels(models.length > 0 ? models : FALLBACK_OPENROUTER_MODELS);
+      } catch {
+        if (!cancelled) setOpenrouterModels(FALLBACK_OPENROUTER_MODELS);
+      } finally {
+        if (!cancelled) setOpenrouterLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [provider, runtimeLoaded, openrouterKey]);
 
   // ── Filtered OpenRouter models ─────────────────────────────────────────────
   const filteredOpenRouterModels = useMemo(() => {
@@ -187,36 +194,42 @@ export default function BotSettingsPage() {
     return list;
   }, [openrouterModels, showFreeOnly, openrouterSearch]);
 
-  // ── Save runtime settings to server ────────────────────────────────────────
+  // ── Save settings to Supabase ──────────────────────────────────────────────
   const saveRuntimeSettings = async () => {
     setSaving(true);
     try {
-      const body: Record<string, any> = {
-        enabled: agentEnabled,
-        mode: provider,
-        ollamaBaseUrl: ollamaUrl.replace(/\/$/, ''),
-        ollamaModel,
-        openrouterModel,
-        hermesProvider: hermesSubProvider,
-        temperature,
-        maxTokens,
+      const payload: Record<string, any> = {
+        bot_enabled: agentEnabled,
+        bot_provider: provider,
+        bot_base_url: ollamaUrl.replace(/\/$/, ''),
+        bot_model: provider === 'ollama' ? ollamaModel : openrouterModel,
+        bot_temperature: temperature,
+        bot_max_tokens: maxTokens,
+        openrouter_model: openrouterModel,
+        hermes_sub_provider: hermesSubProvider,
       };
       if (provider === 'openrouter' && openrouterKey.trim()) {
-        body.openrouterApiKey = openrouterKey.trim();
+        payload.openrouter_api_key = openrouterKey.trim();
       }
 
-      const res = await fetch(`${RUNTIME_URL}/runtime/settings`, {
-        method: 'PUT',
-        headers: adminHeaders(),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Server returned ${res.status}`);
+      // Try to get existing row id
+      const { data: existing } = await (supabase.from('settings') as any)
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
+      let result;
+      if (existing?.id) {
+        result = await (supabase.from('settings') as any).update(payload).eq('id', existing.id);
+      } else {
+        result = await (supabase.from('settings') as any).insert(payload);
       }
-      const updated = await res.json();
-      setOpenrouterKeyMasked(updated.openrouterKeyMasked);
-      setOpenrouterKey('');
+      if (result.error) throw result.error;
+
+      if (provider === 'openrouter' && openrouterKey.trim()) {
+        setOpenrouterKeyMasked(`••••••••${openrouterKey.trim().slice(-4)}`);
+        setOpenrouterKey('');
+      }
       toast.success('Agent settings saved');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save agent settings');
