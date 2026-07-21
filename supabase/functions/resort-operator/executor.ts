@@ -20,11 +20,16 @@ export interface ExecutionResult {
   detail?: unknown;
 }
 
-async function audit(supabase: any, action: string, detail: unknown) {
+async function audit(supabase: any, action: string, detail: Record<string, unknown> | unknown) {
   try {
+    const caseId = (detail && typeof detail === "object" && "case_id" in (detail as Record<string, unknown>))
+      ? String((detail as Record<string, unknown>).case_id)
+      : null;
     await supabase.from("audit_log").insert({
-      actor: "resort-operator",
+      employee_name: "resort-operator",
       action,
+      table_name: "ops_cases",
+      record_id: caseId,
       details: typeof detail === "string" ? detail : JSON.stringify(detail),
     });
   } catch (_) { /* audit table shape differences must not break the loop */ }

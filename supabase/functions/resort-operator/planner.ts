@@ -294,6 +294,7 @@ export function plan(state: ResortState): PlannedAction[] {
           source_id: o.id,
           department: "kitchen",
           risk: `Order open since ${o.created_at}, status ${o.status}`,
+          due_at: new Date(new Date(o.created_at).getTime() + 90 * 60 * 1000).toISOString(),
           required_action: `Resolve stuck order (${o.order_type}, ${o.location_detail || "no location"})`,
         },
       });
@@ -322,6 +323,7 @@ export function plan(state: ResortState): PlannedAction[] {
         guest_name: t.guest_name ?? "",
         department: "cashier",
         risk: `Tab open since ${t.created_at} (${t.location_detail || "no location"}) — unbilled revenue`,
+        due_at: `${state.today}T17:00:00Z`,
         required_action: `Settle or close tab for ${t.guest_name || "unknown guest"} (${t.location_detail || "no location"})`,
       },
     });
