@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { hasAccess, canEdit } from '@/lib/permissions';
 import { getStaffSession } from '@/lib/session';
+import { resolveIdentity } from '@/lib/staffAuth';
+import { availableDepartments } from '@/lib/getHomeRoute';
 import ReceptionHome from '@/components/staff/ReceptionHome';
 import HousekeepingHome from '@/components/staff/HousekeepingHome';
+import MaintenanceHome from '@/components/staff/MaintenanceHome';
 import KitchenHome from '@/components/staff/KitchenHome';
 import BarHome from '@/components/staff/BarHome';
 import ExperiencesHome from '@/components/staff/ExperiencesHome';
@@ -13,37 +15,22 @@ import StaffNavBar from '@/components/StaffNavBar';
 import MorningBriefing from '@/components/MorningBriefing';
 import { useDepartmentAlerts } from '@/hooks/useDepartmentAlerts';
 
-interface RoleDef {
-  key: string;
-  label: string;
-  perm: string;
-}
-
-const ROLES: RoleDef[] = [
-  { key: 'reception', label: 'Reception', perm: 'reception' },
-  { key: 'housekeeping', label: 'Housekeeping', perm: 'housekeeping' },
-  { key: 'kitchen', label: 'Kitchen', perm: 'kitchen' },
-  { key: 'bar', label: 'Bar', perm: 'bar' },
-  { key: 'experiences', label: 'Experiences', perm: 'experiences' },
-  { key: 'orders', label: 'Orders', perm: 'orders' },
-];
+// The department list lives in lib/getHomeRoute.ts so this shell, the nav bar
+// and the route table share one definition. Maintenance was missing from the
+// old local copy, so maintenance-only staff matched no department and silently
+// landed on Reception.
 
 const StaffShell = () => {
   const navigate = useNavigate();
   const session = getStaffSession();
-  const perms: string[] = session?.permissions || [];
-  const isAdmin = perms.includes('admin');
+  const { permissions: perms, isAdmin } = resolveIdentity(session);
 
-  const availableRoles = useMemo(() => {
-    if (isAdmin) return ROLES;
-    return ROLES.filter(r => {
-      // Orders tab requires edit (placing orders), not just view
-      if (r.key === 'orders') return canEdit(perms, r.perm);
-      return hasAccess(perms, r.perm);
-    });
-  }, [perms, isAdmin]);
+  const availableRoles = useMemo(
+    () => availableDepartments(perms, isAdmin),
+    [perms, isAdmin],
+  );
 
-  const [activeRole, setActiveRole] = useState(() => availableRoles[0]?.key || 'reception');
+  const [activeRole, setActiveRole] = useState(() => availableRoles[0]?.key ?? 'reception');
   const alerts = useDepartmentAlerts();
 
   if (!session) {
@@ -54,7 +41,7 @@ const StaffShell = () => {
   return (
     <div className="min-h-screen bg-navy-texture overflow-x-hidden">
       {/* Global navigation bar */}
-      <StaffNavBar />
+      <StaffNavBar activeDepartment={activeRole} />
 
       <div className="max-w-2xl mx-auto px-4 pb-4">
 
@@ -86,6 +73,7 @@ const StaffShell = () => {
         {/* Role-specific home screen */}
         {activeRole === 'reception' && <ReceptionHome />}
         {activeRole === 'housekeeping' && <HousekeepingHome />}
+        {activeRole === 'maintenance' && <MaintenanceHome />}
         {activeRole === 'kitchen' && <KitchenHome />}
         {activeRole === 'bar' && <BarHome />}
         {activeRole === 'experiences' && <ExperiencesHome />}

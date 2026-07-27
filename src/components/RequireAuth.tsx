@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { hasAccess } from '@/lib/permissions';
 import { getStaffSession, clearStaffSession } from '@/lib/session';
+import { STAFF_JWT_MODE, resolveIdentity } from '@/lib/staffAuth';
 import { toast } from 'sonner';
 
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000;
-const USE_STAFF_JWT = import.meta.env.VITE_USE_STAFF_JWT === 'true';
+/** Only "true" hard-requires a token. "auto" tolerates the pre-cutover state. */
+const REQUIRE_STAFF_TOKEN = STAFF_JWT_MODE === 'true';
 
 interface RequireAuthProps {
   children: ReactNode;
@@ -24,7 +26,7 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
       return;
     }
 
-    if (USE_STAFF_JWT && !session.token) {
+    if (REQUIRE_STAFF_TOKEN && !session.token) {
       clearStaffSession();
       setSession(null);
       toast.error('Please sign in again to create a secure session.');
@@ -32,8 +34,9 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
       return;
     }
 
-    const perms: string[] = session.permissions || [];
-    const isAdmin = session.isAdmin === true || perms.includes('admin');
+    // Permissions come from the signed token when there is one, so editing the
+    // stored session in devtools no longer grants access. See lib/staffAuth.ts.
+    const { permissions: perms, isAdmin } = resolveIdentity(session);
 
     if (adminOnly && !isAdmin) {
       toast.error('Admin access required');
@@ -72,10 +75,9 @@ const RequireAuth = ({ children, requiredPermission, adminOnly }: RequireAuthPro
   }, [session]);
 
   if (!session) return null;
-  if (USE_STAFF_JWT && !session.token) return null;
+  if (REQUIRE_STAFF_TOKEN && !session.token) return null;
 
-  const perms: string[] = session.permissions || [];
-  const isAdmin = session.isAdmin === true || perms.includes('admin');
+  const { permissions: perms, isAdmin } = resolveIdentity(session);
   if (adminOnly && !isAdmin) return null;
 
   if (requiredPermission && !isAdmin) {

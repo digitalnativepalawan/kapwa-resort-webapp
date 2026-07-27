@@ -1,10 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 import { getStaffToken } from '@/lib/session';
+import { shouldAttachStaffJwt } from '@/lib/staffAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const USE_STAFF_JWT = import.meta.env.VITE_USE_STAFF_JWT === 'true';
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
@@ -28,19 +28,27 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
     }
 
     const currentAuthorization = headers.get('Authorization');
-    // Only attach the staff JWT to edge-function calls. PostgREST cannot decode it
-    // and rejects the request with 401 "No suitable key or wrong key type".
     const isEdgeFunction = requestUrl(input).includes('/functions/v1/');
-    const staffToken = (USE_STAFF_JWT || isEdgeFunction) ? getStaffToken() : null;
+    const staffToken = getStaffToken();
 
-    if (staffToken && isEdgeFunction) {
-      headers.set('Authorization', `Bearer ${staffToken}`);
-    } else if (staffToken && USE_STAFF_JWT) {
+    // Edge functions always get the staff JWT — they verify it themselves
+    // (supabase/functions/_shared/auth.ts) and a bad token there costs one
+    // endpoint, not the whole app.
+    //
+    // PostgREST is the risky one: if it cannot validate the signature it
+    // answers 401 to *every* query. shouldAttachStaffJwt only returns true once
+    // we have observed PostgREST accept this token. See lib/staffAuth.ts.
+    const attach = isEdgeFunction ? Boolean(staffToken) : shouldAttachStaffJwt(staffToken);
+
+    if (attach && staffToken) {
       headers.set('Authorization', `Bearer ${staffToken}`);
     } else if (
       isNewSupabaseApiKey(supabaseKey)
       && currentAuthorization === `Bearer ${supabaseKey}`
     ) {
+      // Opaque publishable keys are not JWTs. Sending one as a Bearer token
+      // makes PostgREST try to decode it and fail; the `apikey` header below is
+      // the correct carrier.
       headers.delete('Authorization');
     }
 

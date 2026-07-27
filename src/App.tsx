@@ -15,6 +15,7 @@ import EmployeePortal from "./pages/EmployeePortal";
 import KitchenPage from "./pages/KitchenPage";
 import BarPage from "./pages/BarPage";
 import HousekeeperPage from "./pages/HousekeeperPage";
+import MaintenancePage from "./pages/MaintenancePage";
 import GuestPortalPage from "./pages/GuestPortal";
 import ReceptionPage from "./pages/ReceptionPage";
 import ExperiencesPage from "./pages/ExperiencesPage";
@@ -62,6 +63,7 @@ const App = () => (
             <Route path="/kitchen" element={<RequireAuth requiredPermission="kitchen"><KitchenPage /></RequireAuth>} />
             <Route path="/bar" element={<RequireAuth requiredPermission="bar"><BarPage /></RequireAuth>} />
             <Route path="/housekeeper" element={<RequireAuth requiredPermission="housekeeping"><HousekeeperPage /></RequireAuth>} />
+            <Route path="/maintenance" element={<RequireAuth requiredPermission="tasks"><MaintenancePage /></RequireAuth>} />
             <Route path="/reception" element={<RequireAuth requiredPermission="reception"><ReceptionPage /></RequireAuth>} />
             <Route path="/experiences" element={<RequireAuth requiredPermission={['experiences', 'reception']}><ExperiencesPage /></RequireAuth>} />
 
