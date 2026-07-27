@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import StaffNavBar from '@/components/StaffNavBar';
-import { AlertTriangle, Loader2, Plus, Wrench } from 'lucide-react';
+import QueryErrorBanner from '@/components/QueryErrorBanner';
+import { Loader2, Plus, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
@@ -167,25 +168,12 @@ const MaintenancePage = ({ embedded = false }: { embedded?: boolean }) => {
       </div>
 
       {/* A failed read is reported, not swallowed into an empty list. */}
-      {error && (
-        <Card className="p-4 border-destructive/50 bg-destructive/10">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
-            <div className="space-y-2">
-              <p className="font-body text-sm text-foreground">
-                Could not load maintenance jobs.
-              </p>
-              <p className="font-body text-xs text-muted-foreground break-words">
-                {error instanceof Error ? error.message : String(error)}
-              </p>
-              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isRefetching}>
-                {isRefetching ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : null}
-                Try again
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
+      <QueryErrorBanner
+        error={error}
+        what="maintenance jobs"
+        onRetry={() => refetch()}
+        retrying={isRefetching}
+      />
 
       {mayEdit && (
         adding ? (

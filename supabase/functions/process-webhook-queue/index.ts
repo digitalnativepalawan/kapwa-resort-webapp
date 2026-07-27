@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireInternal } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +14,12 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Drains the webhook queue with the service role. Scheduled/internal caller
+  // only — it had no handler-level guard and relied on the gateway, which
+  // cannot validate this project's opaque publishable key.
+  const auth = requireInternal(req);
+  if (!auth.ok) return auth.response;
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

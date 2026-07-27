@@ -1,3 +1,5 @@
+import { requireStaffOrInternal } from "../_shared/auth.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -16,6 +18,14 @@ const CHAT_IDS: Record<string, number> = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  // This endpoint writes into the resort's staff Telegram groups. It had no
+  // handler-level guard at all, relying entirely on the gateway — which cannot
+  // check an opaque publishable key. Staff JWT or the internal secret, both
+  // verified. Callers: the back office (staff token) and ops-coordinator /
+  // concierge-ai (internal secret).
+  const auth = await requireStaffOrInternal(req);
+  if (!auth.ok) return auth.response;
 
   try {
     const token = Deno.env.get("TELEGRAM_BOT_TOKEN");

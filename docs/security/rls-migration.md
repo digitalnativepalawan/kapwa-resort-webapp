@@ -1,5 +1,52 @@
 # Claim-based auth + RLS migration
 
+> ## Current state (read this first)
+>
+> The staged plan below was written before Phase 2 shipped. What actually
+> happened: **the Phase 2 SQL was committed to `supabase/migrations` and applied
+> while `VITE_USE_STAFF_JWT` was still `"false"`.** Staff browsers were therefore
+> the anonymous role, and every claim-protected table read as empty — employees,
+> permissions, payroll, bonuses, audit log.
+>
+> A later migration (`20260707093000_guest_bot_memory.sql`) then re-created anon
+> write policies on `guest_faq_memory` and `settings`, contradicting Phase 2 for
+> those two tables. `20260727120000_reconcile_rls_phase2.sql` settles that: one
+> coherent claim-based policy set, plus explicitly named `COMPAT` anon policies
+> that reproduce today's access so nothing breaks before the cutover.
+>
+> ### The order to do things in
+>
+> 1. Set `STAFF_JWT_SECRET` on `employee-auth` to the project's JWT secret
+>    (Settings → API → JWT Settings) and redeploy the function.
+> 2. Apply `supabase/migrations/20260727120000_reconcile_rls_phase2.sql`.
+>    Safe in either state.
+> 3. Sign out, sign back in, open **Admin → Audit → Staff Authentication**.
+>    - **Active** → PostgREST accepts the token. Continue.
+>    - **Rejected** → the secret does not match, or the project uses asymmetric
+>      JWT signing keys while `employee-auth` signs HS256. Stop and fix it;
+>      nothing below will work.
+>    - **No token issued** → step 1 did not take effect.
+> 4. Only once Diagnostics reports **Active**, run
+>    `docs/security/rls-cutover-drop-compat.sql`. This removes the anon bridge
+>    and revokes anon's read access to `settings.openrouter_api_key`.
+> 5. **Rotate the OpenRouter key.** `settings` has been anon-readable since the
+>    first migration and later gained `openrouter_api_key`, so that key has been
+>    readable by anyone with the publishable key. Revoking access does not undo
+>    prior exposure.
+> 6. Optionally set `VITE_USE_STAFF_JWT="true"` to skip the runtime probe.
+>
+> Rollbacks: `rls-cutover-rollback.sql` (settings / FAQ bridge),
+> `rls-phase2-rollback.sql` (crown-jewel tables, emergency only — it returns
+> those tables to world-readable).
+>
+> The `"auto"` mode described in `.env.example` exists so step 3 is answerable
+> at all: the frontend probes PostgREST once at login and only attaches the
+> staff JWT to database requests after seeing it accepted. That is what makes a
+> wrong `STAFF_JWT_SECRET` a reported warning instead of a site-wide outage.
+
+---
+
+
 This is the rollout guide for moving KAPWA OS from **client-trusted permissions** (a
 forgeable `localStorage` blob, plus a database that is world-readable/writable
 through the public anon key) to **claim-based auth** enforced by Postgres RLS.

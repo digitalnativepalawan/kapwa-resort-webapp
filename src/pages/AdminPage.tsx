@@ -43,6 +43,7 @@ import DepartmentOrdersView from '@/components/DepartmentOrdersView';
 import IntegrationReadinessDashboard from '@/components/integration/IntegrationReadinessDashboard';
 import LiveOpsDashboard from '@/components/admin/LiveOpsDashboard';
 import ResortOperatorLauncher from '@/components/admin/ResortOperatorLauncher';
+import AuthDiagnostics from '@/components/admin/AuthDiagnostics';
 
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { hasAccess, canEdit, canViewDocuments } from '@/lib/permissions';
@@ -1080,7 +1081,8 @@ const AdminPage = () => {
 
           {/* AUDIT LOG TAB */}
           {isAdmin && (
-            <TabsContent value="audit">
+            <TabsContent value="audit" className="space-y-4">
+              <AuthDiagnostics />
               <AuditLogView />
             </TabsContent>
           )}
