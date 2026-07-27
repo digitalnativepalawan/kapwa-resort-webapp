@@ -56,6 +56,7 @@ const StaffNavBar = ({ activeDepartment }: StaffNavBarProps) => {
     if (location.pathname === '/kitchen') currentDept = 'kitchen';
     else if (location.pathname === '/bar') currentDept = 'bar';
     else if (location.pathname === '/housekeeper') currentDept = 'housekeeping';
+    else if (location.pathname === '/maintenance') currentDept = 'maintenance';
     else if (location.pathname === '/reception') currentDept = 'reception';
     else if (location.pathname === '/experiences') currentDept = 'experiences';
     else if (location.pathname === '/employee-portal') currentDept = ''; // no dept badge on My Work

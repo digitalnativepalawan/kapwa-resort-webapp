@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receipt, ArrowLeft, ChevronRight, ClipboardList, Calendar, Clock, Users, StickyNote, CheckCircle2, Utensils, Palmtree, Truck, CreditCard, FileText, Loader2, ConciergeBell, AlertTriangle, Bell, Info, Phone, Mail, MapPinned, Moon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { setGuestSession } from '@/hooks/useGuestSession';
-import AgentChatPanel from '@/components/AgentChatPanel';
+import TalaConcierge from '@/components/guest/TalaConcierge';
 
 const GUEST_PORTAL_KEY = 'guest_portal_session';
 
@@ -384,7 +384,9 @@ const GuestPortal = () => {
               <LogOut className="w-3.5 h-3.5" /> Sign out
             </button>
 
-            <AgentChatPanel />
+            {/* TALA runs with this guest's own booking context, resolved
+                server-side by the guest-chat function. */}
+            <TalaConcierge bookingId={session.booking_id} />
           </>
         )}
 

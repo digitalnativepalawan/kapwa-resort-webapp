@@ -8,9 +8,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DoorOpen, Users, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { getStaffSession, setStaffSession, isRemembered } from '@/lib/session';
+import { STAFF_JWT_MODE, probeStaffJwt, resolveIdentity } from '@/lib/staffAuth';
+import { getHomeRoute } from '@/lib/getHomeRoute';
 import ThemeToggle from '@/components/ThemeToggle';
 
-const USE_STAFF_JWT = import.meta.env.VITE_USE_STAFF_JWT === 'true';
+/** Only "true" hard-requires a token; "auto" still works pre-cutover. */
+const REQUIRE_STAFF_TOKEN = STAFF_JWT_MODE === 'true';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -27,13 +30,12 @@ const Index = () => {
     const existing = getStaffSession();
     if (!existing) return;
 
-    if (USE_STAFF_JWT && !existing.token) {
+    if (REQUIRE_STAFF_TOKEN && !existing.token) {
       return;
     }
 
-    const perms: string[] = existing.permissions || [];
-    const isAdmin = existing.isAdmin || perms.includes('admin');
-    navigate(isAdmin ? '/admin' : '/staff', { replace: true });
+    const { permissions } = resolveIdentity(existing);
+    navigate(getHomeRoute(permissions), { replace: true });
   }, [navigate]);
 
   const handleLogin = async () => {
@@ -51,7 +53,7 @@ const Index = () => {
         return;
       }
 
-      if (USE_STAFF_JWT && !data?.token) {
+      if (REQUIRE_STAFF_TOKEN && !data?.token) {
         toast.error('Secure login is not fully configured. STAFF_JWT_SECRET is missing or invalid.');
         return;
       }
@@ -75,10 +77,24 @@ const Index = () => {
         remember,
       );
 
+      // Decide once, here, whether PostgREST accepts this token — every later
+      // table read depends on the answer and the check must not race them.
+      // A rejected token is not a login failure: the session still works
+      // against the anonymous role exactly as it did before.
+      if (data.token) {
+        const accepted = await probeStaffJwt(data.token);
+        if (!accepted && isAdmin) {
+          toast.warning(
+            'Signed in, but the database rejected your staff token. Claim-protected screens will read as empty until STAFF_JWT_SECRET matches the project JWT secret. See Admin → Diagnostics.',
+            { duration: 10000 },
+          );
+        }
+      }
+
       localStorage.setItem('emp_id', data.employee.id);
       localStorage.setItem('emp_name', data.employee.name);
       toast.success(`Welcome, ${data.employee.name}`);
-      navigate(isAdmin ? '/admin' : '/staff');
+      navigate(getHomeRoute(permissions));
     } catch {
       toast.error('Login failed');
     } finally {

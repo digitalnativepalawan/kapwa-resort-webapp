@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { getStaffSession, StaffSession } from '@/lib/session';
+import { resolveIdentity } from '@/lib/staffAuth';
 import {
   hasAccess as _hasAccess,
   canEdit as _canEdit,
@@ -31,8 +32,9 @@ export interface UsePermissionsReturn {
 
 export const usePermissions = (): UsePermissionsReturn => {
   const session = getStaffSession();
-  const perms: string[] = session?.permissions || [];
-  const isAdmin = perms.includes('admin');
+  // Signed claims take precedence over the stored session blob, so a tampered
+  // localStorage entry cannot widen what the UI offers. See lib/staffAuth.ts.
+  const { permissions: perms, isAdmin } = resolveIdentity(session);
 
   return useMemo(() => ({
     session,

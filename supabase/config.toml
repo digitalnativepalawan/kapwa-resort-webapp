@@ -1,10 +1,109 @@
 project_id = "bjxxojkkmkbbhexhypvd"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Edge Function gateway configuration
+#
+# This project authenticates the browser with an *opaque* publishable key
+# (`sb_publishable_...`). Those keys are NOT JWTs, so the Supabase gateway
+# cannot validate them as one. Any function that leaves `verify_jwt` at its
+# default (`true`) therefore rejects browser traffic with a 401 *before the
+# handler runs*.
+#   https://supabase.com/docs/guides/getting-started/api-keys
+#   https://supabase.com/docs/guides/functions/auth-headers
+#
+# The rule for this codebase is consequently:
+#   gateway verification OFF everywhere, authorization enforced IN the handler.
+#
+# Every function below is classified. Do not add a function directory without
+# adding it here — an unlisted function silently inherits `verify_jwt = true`
+# and will 401. `src/lib/edgeFunctions.ts` mirrors this table and
+# `src/lib/edgeFunctions.test.ts` fails the build if the two drift apart.
+#
+# Classes:
+#   public   — unauthenticated by design (guest-facing or the login endpoint)
+#   staff    — requires a staff JWT; enforced by _shared/auth.ts requireStaff()
+#   internal — requires the INTERNAL_FN_SECRET header (cron / server-to-server)
+#   webhook  — external provider callback, guarded by its own shared secret
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── public ───────────────────────────────────────────────────────────────────
+# The login endpoint itself. It can never require a JWT: the caller is asking
+# for one. Brute-force protection lives in the handler.
+[functions.employee-auth]
+verify_jwt = false
+
+# Guest concierge (TALA). Reachable from the public Guest Portal.
+[functions.guest-chat]
+verify_jwt = false
+
+# ── webhook ──────────────────────────────────────────────────────────────────
 [functions.sirvoy-webhook]
 verify_jwt = false
 
 [functions.integration-webhook]
 verify_jwt = false
 
-[functions.guest-chat]
+# Guarded by TELEGRAM_WEBHOOK_SECRET (x-telegram-bot-api-secret-token).
+[functions.telegram-webhook]
+verify_jwt = false
+
+# ── internal ─────────────────────────────────────────────────────────────────
+# Guarded by INTERNAL_FN_SECRET. Called by cron / server-to-server only.
+[functions.configure-telegram-webhook]
+verify_jwt = false
+
+[functions.process-webhook-queue]
+verify_jwt = false
+
+# ── staff ────────────────────────────────────────────────────────────────────
+# Called from the back office. requireStaff() enforces the staff JWT in-handler.
+[functions.admin-summary]
+verify_jwt = false
+
+[functions.concierge-ai]
+verify_jwt = false
+
+[functions.forecast-7day]
+verify_jwt = false
+
+[functions.frontdesk-today]
+verify_jwt = false
+
+[functions.guest-requests-api]
+verify_jwt = false
+
+[functions.guest-search]
+verify_jwt = false
+
+[functions.housekeeping]
+verify_jwt = false
+
+[functions.ops-coordinator]
+verify_jwt = false
+
+[functions.orders-today]
+verify_jwt = false
+
+[functions.reservations-ai]
+verify_jwt = false
+
+[functions.resort-agent-loop]
+verify_jwt = false
+
+[functions.resort-operator]
+verify_jwt = false
+
+[functions.resort-operator-execute]
+verify_jwt = false
+
+[functions.scan-receipt]
+verify_jwt = false
+
+[functions.send-telegram]
+verify_jwt = false
+
+[functions.today-ops]
+verify_jwt = false
+
+[functions.tours-today]
 verify_jwt = false

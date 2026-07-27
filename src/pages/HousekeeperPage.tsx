@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfMonth } from 'date-fns';
 import HousekeepingInspection from '@/components/admin/HousekeepingInspection';
+import QueryErrorBanner from '@/components/QueryErrorBanner';
 import { getStaffSession } from '@/lib/session';
 import { hasAccess, canEdit } from '@/lib/permissions';
 
@@ -77,10 +78,13 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
     || canEdit(perms, 'reception')
     || hasAccess(perms, 'rooms') && canEdit(perms, 'housekeeping');
 
-  const { data: allOrders = [] } = useQuery({
+  const { data: allOrders = [], error: ordersError, refetch: refetchOrders } = useQuery({
     queryKey: ['housekeeping-orders-all'],
     queryFn: async () => {
-      const { data } = await from('housekeeping_orders').select('*').order('created_at', { ascending: false });
+      const { data, error } = await from('housekeeping_orders').select('*').order('created_at', { ascending: false });
+      // The error used to be discarded and `data || []` returned, so an RLS
+      // rejection rendered as "no rooms to clean" rather than as a failure.
+      if (error) throw error;
       return (data || []) as any[];
     },
     refetchInterval: 5000,
@@ -197,6 +201,16 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
             <h1 className="font-display text-xl tracking-wider text-foreground">🏨 Housekeeping</h1>
             <p className="font-body text-xs text-muted-foreground">Welcome, {empName}</p>
           </div>
+        </div>
+      )}
+
+      {ordersError && (
+        <div className="mb-4">
+          <QueryErrorBanner
+            error={ordersError}
+            what="housekeeping assignments"
+            onRetry={() => refetchOrders()}
+          />
         </div>
       )}
 

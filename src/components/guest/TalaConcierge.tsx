@@ -4,7 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, MessageSquare, Send, X, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, X, Loader2 } from 'lucide-react';
+
+/**
+ * TALA — the guest concierge.
+ *
+ * This component is for the **Guest Portal only**. It carries the guest
+ * persona, the staff-approved guest FAQ memory, and the `guest-chat` function,
+ * and it has no access to employees, payroll, other bookings, management notes
+ * or operational dashboards.
+ *
+ * It was previously called `AgentChatPanel` and was mounted on the Admin page
+ * as well, where it kept the guest prompt and merely rendered an extra
+ * "Resort Operator" button — which is why TALA answered back-office questions
+ * as though it were talking to a guest. The back office now has its own agent
+ * (`resort-operator`, reached from `admin/ResortOperatorLauncher`).
+ */
 
 interface Message {
   role: 'user' | 'assistant';
@@ -93,14 +108,22 @@ async function callOllama(settings: typeof defaultSettings, systemPrompt: string
   return reply;
 }
 
-export default function AgentChatPanel() {
+interface TalaConciergeProps {
+  /**
+   * The signed-in guest's booking. Sent to `guest-chat`, which resolves the
+   * guest's real name, room and stay dates from the database — the browser
+   * never supplies those directly.
+   */
+  bookingId?: string;
+}
+
+export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const isAdminPage = window.location.pathname.startsWith('/admin');
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -128,7 +151,7 @@ export default function AgentChatPanel() {
         reply = await callOllama(settings, buildSystemPrompt(memory), history, userMessage);
       } else {
         const { data, error } = await supabase.functions.invoke('guest-chat', {
-          body: { message: userMessage, memory, history },
+          body: { message: userMessage, memory, history, booking_id: bookingId },
         });
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
@@ -150,12 +173,6 @@ export default function AgentChatPanel() {
 
   return (
     <>
-      {isAdminPage && (
-        <Button onClick={() => { window.location.href = '/admin/operator'; }} variant="outline" className="fixed bottom-6 right-24 z-50 h-14 rounded-full shadow-lg px-4 bg-card">
-          <Bot className="w-5 h-5 mr-2" />Resort Operator
-        </Button>
-      )}
-
       {!open && (
         <Button onClick={() => setOpen(true)} className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg bg-primary hover:bg-primary/90" aria-label="Open guest concierge">
           <MessageSquare className="w-6 h-6" />
