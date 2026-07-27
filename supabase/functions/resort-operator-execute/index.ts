@@ -9,6 +9,7 @@
 // Gated by admin JWT or by shared x-internal-secret (parity with resort-operator).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, requireInternal } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,29 +22,23 @@ const respond = (payload: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function decodeJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
-}
+/**
+ * Signature-verified authorization. Previously this base64-decoded the JWT
+ * payload and trusted `is_admin` without verifying the signature — meaning any
+ * caller could forge an admin claim and drive this function's writes.
+ *
+ * Returns the actor name for the audit trail alongside the decision.
+ */
+async function authorize(req: Request): Promise<
+  { ok: true; decidedBy: string } | { ok: false; response: Response }
+> {
+  const internal = requireInternal(req);
+  if (internal.ok && internal.enforced) return { ok: true, decidedBy: "internal" };
 
-function isAuthorized(req: Request): { ok: boolean; decidedBy: string } {
-  const internal = (req.headers.get("x-internal-secret") ?? "").trim();
-  const stored = (Deno.env.get("INTERNAL_FN_SECRET") ?? "").trim();
-  if (internal && stored && internal === stored) {
-    return { ok: true, decidedBy: "internal" };
-  }
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  const payload = token ? decodeJwtPayload(token) : null;
-  const admin = payload?.is_admin === true ||
-    (Array.isArray(payload?.permissions) && payload.permissions.includes("admin"));
-  const decidedBy = (payload?.employee_name as string) || (payload?.email as string) || "admin";
-  return { ok: admin, decidedBy };
+  const admin = await requireAdmin(req);
+  if (!admin.ok) return { ok: false, response: admin.response };
+
+  return { ok: true, decidedBy: admin.claims?.name || "admin" };
 }
 
 async function writeAudit(supabase: any, params: {
@@ -178,8 +173,8 @@ const HANDLERS: Record<string, (supabase: any, payload: any, actor: string) => P
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const auth = isAuthorized(req);
-  if (!auth.ok) return respond({ ok: false, error: "Admin access required" }, 403);
+  const auth = await authorize(req);
+  if (!auth.ok) return auth.response;
 
   let body: any;
   try {

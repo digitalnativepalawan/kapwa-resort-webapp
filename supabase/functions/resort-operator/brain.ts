@@ -10,14 +10,31 @@
 //    the loop. Any failure returns null / throws cleanly and the cycle continues.
 // 2. Strict JSON in, validated out. Hard timeouts. Facts only from supplied state.
 //
-// Env:
-//   OPENROUTER_API_KEY   required to enable (absent = LLM layer silently off)
-//   OPERATOR_MODEL       default "anthropic/claude-haiku-4-5"
+// Configuration:
+//   Model + key come from ../_shared/modelGateway.ts, which reads Admin → Agent
+//   Settings first and only then falls back to the OPENROUTER_API_KEY /
+//   OPERATOR_MODEL secrets. index.ts calls useModelConfig() once per request.
 //   AGENT_LLM_ENABLED    "false" = kill switch without removing the key
 //   APP_URL              referer for OpenRouter
+//
+// This module keeps its own fetch rather than using the gateway's callModel
+// because the triage/ask paths need hard abort timeouts — the deterministic
+// planner must never be blocked waiting on a model.
 
 import type { PlannedAction } from "./planner.ts";
 import type { ResortState } from "./state.ts";
+import type { ModelConfig } from "../_shared/modelGateway.ts";
+
+/** Config resolved for the current request. Set by index.ts before planning. */
+let activeConfig: ModelConfig | null = null;
+
+export function useModelConfig(config: ModelConfig | null): void {
+  activeConfig = config;
+}
+
+function apiKey(): string | null {
+  return activeConfig?.apiKey ?? Deno.env.get("OPENROUTER_API_KEY") ?? null;
+}
 
 export interface TriageResult {
   priority: "low" | "medium" | "high" | "urgent";
@@ -40,13 +57,13 @@ const ASK_TIMEOUT_MS = 20000;
 
 export function llmEnabled(): boolean {
   if ((Deno.env.get("AGENT_LLM_ENABLED") ?? "").toLowerCase() === "false") return false;
-  return Boolean(Deno.env.get("OPENROUTER_API_KEY"));
+  return Boolean(apiKey());
 }
 
 async function callOpenRouter(prompt: string, maxTokens: number, timeoutMs: number): Promise<{ text: string; tokens: number } | null> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) return null;
-  const model = Deno.env.get("OPERATOR_MODEL") ?? "anthropic/claude-haiku-4-5";
+  const key = apiKey();
+  if (!key) return null;
+  const model = operatorModel();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -55,7 +72,7 @@ async function callOpenRouter(prompt: string, maxTokens: number, timeoutMs: numb
       method: "POST",
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
         "HTTP-Referer": Deno.env.get("APP_URL") ?? "https://kapwa.local",
         "X-Title": "KAPWA Resort Operator",
@@ -83,7 +100,9 @@ async function callOpenRouter(prompt: string, maxTokens: number, timeoutMs: numb
 }
 
 export function operatorModel(): string {
-  return Deno.env.get("OPERATOR_MODEL") ?? "anthropic/claude-haiku-4-5";
+  return activeConfig?.model
+    ?? Deno.env.get("OPERATOR_MODEL")
+    ?? "anthropic/claude-haiku-4-5";
 }
 
 // ── Triage: called by the executor when a case opens ─────────────────────────

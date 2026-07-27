@@ -33,14 +33,24 @@ triage — unrelated, don't touch it).
 - A live mic → STT → LLM → TTS round trip — the wiring is correct against
   the real library API, but a live audio test is the real proof.
 - The Supabase migration (`supabase_migrations/0001_tala_memory_and_faq.sql`)
-  has not been applied to the live `paghxagqnaisxesmhnwj` project yet.
+  has not been applied to the live project yet.
+
+> **Project reference.** Earlier revisions of this document named the retired
+> `paghxagqnaisxesmhnwj` project. The single production project is the one in
+> `supabase/config.toml` (`project_id`) at the repository root. Do not apply
+> anything here to any other project.
+>
+> **Status.** This directory is a standalone prototype. Nothing in the React
+> application imports or starts it, so TALA voice is not part of the Guest
+> Portal today. The Guest Portal's TALA is the text concierge backed by the
+> `guest-chat` edge function.
 
 ---
 
 ## 1. Apply the Supabase migration
 
 ```bash
-# From the Supabase SQL editor (paghxagqnaisxesmhnwj project), paste and run:
+# From the Supabase SQL editor of the project in supabase/config.toml, paste and run:
 supabase_migrations/0001_tala_memory_and_faq.sql
 ```
 

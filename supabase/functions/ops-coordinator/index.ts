@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin, requireInternal } from "../_shared/auth.ts";
+import { resolveModelConfig } from "../_shared/modelGateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -32,54 +34,14 @@ function manilaRangeEnd(date: string) {
   return `${date}T23:59:59+08:00`;
 }
 
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(normalized));
-  } catch {
-    return null;
-  }
-}
+// Admin authorization is signature-verified in ../_shared/auth.ts. This used to
+// trust an unverified base64 decode of the JWT payload, so any caller could
+// forge `is_admin: true` and both read the operational brief and push it to
+// Telegram.
 
-function isAdminRequest(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  const payload = token ? decodeJwtPayload(token) : null;
-  return payload?.is_admin === true ||
-    (Array.isArray(payload?.permissions) && payload.permissions.includes("admin"));
-}
-
-async function callModel(prompt: string, maxTokens = 700): Promise<string> {
-  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
-  if (!apiKey) throw new Error("model_unavailable"); // handled by caller -> deterministic fallback
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("APP_URL") ?? "https://kapwa.local",
-      "X-Title": "KAPWA Hospitality OS",
-    },
-    body: JSON.stringify({
-      model: Deno.env.get("OPS_COORDINATOR_MODEL") ?? "anthropic/claude-haiku-4-5",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0.2,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter returned ${response.status}: ${await response.text()}`);
-  }
-
-  const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content?.trim();
-  if (!reply) throw new Error("OpenRouter returned an empty operations brief");
-  return reply;
-}
+// Model selection now comes from the shared gateway, so the model chosen in
+// Admin → Agent Settings actually drives this agent instead of only the guest
+// concierge. See ../_shared/modelGateway.ts.
 
 
 async function sendTelegram(supabase: any, group: string, message: string) {
@@ -314,9 +276,22 @@ function buildActionProposals(data: Record<string, any>) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const internalSecret = Deno.env.get("INTERNAL_FN_SECRET");
-  const internalAuthorized = Boolean(internalSecret) && req.headers.get("x-internal-secret") === internalSecret;
-  const adminAuthorized = isAdminRequest(req);
+  const internal = requireInternal(req);
+  const internalAuthorized = internal.ok && internal.enforced;
+
+  let adminAuthorized = false;
+  let adminDenial: Response | null = null;
+  if (!internalAuthorized) {
+    const admin = await requireAdmin(req);
+    if (admin.ok) {
+      // `enforced: false` means STAFF_JWT_SECRET is unset and the whole staff
+      // auth surface is still inert — preserve the pre-cutover behavior rather
+      // than locking the back office out of its own briefing.
+      adminAuthorized = true;
+    } else {
+      adminDenial = admin.response;
+    }
+  }
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -330,11 +305,8 @@ Deno.serve(async (req) => {
     if (!["preview", "telegram"].includes(delivery)) {
       return jsonResponse({ error: "delivery must be preview | telegram" }, 400);
     }
-    if (delivery === "telegram" && !internalAuthorized && !adminAuthorized) {
-      return jsonResponse({ error: "Forbidden" }, 403);
-    }
-    if (delivery === "preview" && !adminAuthorized && !internalAuthorized) {
-      return jsonResponse({ error: "Admin access required" }, 403);
+    if (!internalAuthorized && !adminAuthorized) {
+      return adminDenial ?? jsonResponse({ error: "Admin access required" }, 403);
     }
 
     const supabase = sb();
@@ -342,13 +314,20 @@ Deno.serve(async (req) => {
     let brief: string;
     let provider = "deterministic";
     let model: string | null = null;
+    let modelError: string | null = null;
 
+    const modelConfig = await resolveModelConfig(supabase, "ops-coordinator");
     try {
-      brief = await callModel(buildPrompt(data, question));
-      provider = "openrouter";
-      model = Deno.env.get("OPS_COORDINATOR_MODEL") ?? "anthropic/claude-haiku-4-5";
+      brief = await callModel(modelConfig, [
+        { role: "user", content: buildPrompt(data, question) },
+      ]);
+      provider = modelConfig.provider;
+      model = modelConfig.model;
     } catch (error) {
+      // The deterministic summary is a genuine fallback, but silently returning
+      // it made a misconfigured model look like a working one. Report why.
       console.error("[ops-coordinator] model fallback", error);
+      modelError = error instanceof Error ? error.message : String(error);
       brief = `${data.arrivals.expected} arrivals, ${data.departures.expected} departures, ${data.housekeeping.open} open housekeeping orders, ${data.requests.open} open guest requests, ${data.overdue_tasks.length} overdue tasks, and ₱${data.total_unpaid} unpaid across active stays. Review urgent requests, missing room-cleaning orders, departing balances and overdue work first.`;
     }
 
@@ -365,6 +344,8 @@ Deno.serve(async (req) => {
       actions: buildActionProposals(data),
       provider,
       model,
+      model_source: modelConfig.source,
+      model_error: modelError,
       generated_at: new Date().toISOString(),
     });
   } catch (error) {

@@ -16,8 +16,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadResortState } from "./state.ts";
 import { plan } from "./planner.ts";
 import { execute, decideCase } from "./executor.ts";
-import { askAgent, llmEnabled, operatorModel } from "./brain.ts";
+import { askAgent, llmEnabled, operatorModel, useModelConfig } from "./brain.ts";
 import { TOOLS, DOMAINS } from "./system-map.ts";
+import { requireAdmin, requireInternal } from "../_shared/auth.ts";
+import { resolveModelConfig } from "../_shared/modelGateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,44 +32,27 @@ const respond = (payload: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function decodeJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
-}
-
-function isAuthorized(req: Request): boolean {
-  const internal = (req.headers.get("x-internal-secret") ?? "").trim();
-  const stored = (Deno.env.get("INTERNAL_FN_SECRET") ?? "").trim();
-  if (internal) {
-    // Diagnostic (no secret contents in logs, only lengths + match flag).
-    console.log(JSON.stringify({
-      diag: "internal-secret-check",
-      header_len: internal.length,
-      stored_len: stored.length,
-      match: internal.length > 0 && internal === stored,
-    }));
-  }
-  if (internal && stored && internal === stored) return true;
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  const payload = token ? decodeJwtPayload(token) : null;
-  return payload?.is_admin === true ||
-    (Array.isArray(payload?.permissions) && payload.permissions.includes("admin"));
-}
+// Authorization is signature-verified in ../_shared/auth.ts. This function used
+// to base64-decode the JWT payload and trust `is_admin` without checking the
+// signature, which let any caller mint their own admin claim.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (!isAuthorized(req)) return respond({ ok: false, error: "Admin access required" }, 403);
+
+  const internal = requireInternal(req);
+  if (!(internal.ok && internal.enforced)) {
+    const admin = await requireAdmin(req);
+    if (!admin.ok) return admin.response;
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // Resolve the operator's model once per request from the shared gateway, so
+  // the model picked in Admin → Agent Settings drives this agent too.
+  useModelConfig(await resolveModelConfig(supabase, "operator"));
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -89,7 +74,7 @@ Deno.serve(async (req) => {
       const question = String(body.question ?? "").trim();
       if (!question) return respond({ ok: false, error: "question required" }, 400);
       if (!llmEnabled()) {
-        return respond({ ok: false, error: "llm_unavailable", detail: "Set OPENROUTER_API_KEY on the resort-operator function (or unset AGENT_LLM_ENABLED=false)." }, 503);
+        return respond({ ok: false, error: "llm_unavailable", detail: "No model configured. Set the OpenRouter key in Admin → Agent Settings, or set OPENROUTER_API_KEY on the function (and check AGENT_LLM_ENABLED is not \"false\")." }, 503);
       }
       const reply = await askAgent(question.slice(0, 1000), state);
       if (!reply) {

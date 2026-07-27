@@ -1,22 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-async function callClaude(prompt: string, maxTokens = 700): Promise<string> {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${Deno.env.get("OPENROUTER_API_KEY")}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://paghxagqnaisxesmhnwj.supabase.co",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-haiku-4-5",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: maxTokens,
-    }),
-  });
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? "";
-}
+import { callModel, resolveModelConfig } from "../_shared/modelGateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -257,17 +240,21 @@ async function detectIssues(supabase: any): Promise<Issue[]> {
 
 // ── Claude summary ────────────────────────────────────────────────────────────
 
-async function generateSummary(issues: Issue[]): Promise<string> {
+async function generateSummary(supabase: any, issues: Issue[]): Promise<string> {
   if (issues.length === 0) return "✅ Reservations healthy. No issues detected.";
 
-  return await callClaude(`You are the reservations coordinator for KAPWA Hospitality OS.
+  const config = await resolveModelConfig(supabase, "reservations", { maxTokens: 400 });
+  return await callModel(config, [{
+    role: "user",
+    content: `You are the reservations coordinator for KAPWA Hospitality OS.
 
 Summarize these booking issues for the resort owner. Plain text only. No markdown.
 Bullets use "•". Be direct. Maximum 200 words. Group by severity.
 Start with "📋 RESERVATIONS CHECK" on the first line.
 
 Issues:
-${JSON.stringify(issues, null, 2)}`, 400);
+${JSON.stringify(issues, null, 2)}`,
+  }]);
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -305,7 +292,7 @@ Deno.serve(async (req) => {
     }
 
     // Send summary to managers (Claude-generated if issues exist)
-    const summary = await generateSummary(issues);
+    const summary = await generateSummary(supabase, issues);
     await sendTelegram(supabase, "managers", summary);
 
     return new Response(

@@ -216,21 +216,15 @@ const AdminPage = () => {
   const sendMorningBrief = async () => {
     setMorningBriefLoading(true);
     try {
-      const response = await fetch(
-        'https://paghxagqnaisxesmhnwj.supabase.co/functions/v1/ops-coordinator',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-internal-secret': 'kapwa-os-ai-2026',
-          },
-          body: JSON.stringify({ type: 'morning' }),
-        }
-      );
-      if (!response.ok) {
-        const err = await response.text();
-        throw new Error(err || `HTTP ${response.status}`);
-      }
+      // Routed through the Supabase client so it always hits the project this
+      // build is configured for, and carries the caller's staff JWT. It used to
+      // POST a hardcoded URL for the retired project with a hardcoded secret in
+      // the bundle, which meant it wrote to a different database entirely.
+      const { data, error } = await supabase.functions.invoke('ops-coordinator', {
+        body: { type: 'morning' },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       toast.success('Morning brief sent successfully');
     } catch (e: any) {
       toast.error(`Morning brief failed: ${e.message}`);

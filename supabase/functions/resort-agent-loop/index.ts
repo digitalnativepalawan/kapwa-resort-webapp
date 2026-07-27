@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAdmin } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,24 +12,8 @@ const respond = (payload: Record<string, unknown>, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
-function decodeJwtPayload(token: string): Record<string, any> | null {
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(atob(normalized));
-  } catch {
-    return null;
-  }
-}
-
-function isAdminRequest(req: Request): boolean {
-  const auth = req.headers.get("authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "").trim();
-  const payload = token ? decodeJwtPayload(token) : null;
-  return payload?.is_admin === true ||
-    (Array.isArray(payload?.permissions) && payload.permissions.includes("admin"));
-}
+// Admin authorization is signature-verified in ../_shared/auth.ts. This used to
+// trust an unverified base64 decode of the JWT payload.
 
 async function invokeInternal(supabase: any, name: string, body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke(name, {
@@ -42,7 +27,8 @@ async function invokeInternal(supabase: any, name: string, body: Record<string, 
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-  if (!isAdminRequest(req)) return respond({ ok: false, error: "Admin access required" }, 403);
+  const admin = await requireAdmin(req);
+  if (!admin.ok) return admin.response;
 
   try {
     const body = await req.json().catch(() => ({}));
