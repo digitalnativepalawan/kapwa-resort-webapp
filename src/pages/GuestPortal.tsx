@@ -191,6 +191,12 @@ const GuestPortal = () => {
             {loading ? 'Verifying...' : 'Enter Portal'}
           </Button>
           <button onClick={() => navigate('/')} className="w-full font-body text-xs text-muted-foreground hover:text-foreground py-2 transition-colors">Back to Home</button>
+          <div className="rounded-xl border border-dashed border-gold/30 p-3 space-y-2">
+            <p className="font-body text-[10px] uppercase tracking-[0.3em] text-muted-foreground text-center">Dev mode · temporary</p>
+            <Button variant="secondary" onClick={devEnterPortal} className="w-full font-body text-xs">
+              Skip login — enter as demo guest
+            </Button>
+          </div>
         </div>
       </div>
     );
