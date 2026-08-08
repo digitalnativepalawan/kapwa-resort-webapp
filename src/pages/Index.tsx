@@ -37,6 +37,23 @@ const Index = () => {
     const { permissions } = resolveIdentity(existing);
     navigate(getHomeRoute(permissions), { replace: true });
   }, [navigate]);
+  /** Temporary build-time bypass: creates a local admin session with no backend call. */
+  const devEnterAdmin = () => {
+    setStaffSession(
+      {
+        name: 'Dev Admin',
+        employeeId: 'dev-admin',
+        isAdmin: true,
+        permissions: ['admin'],
+      },
+      false,
+    );
+    localStorage.setItem('emp_id', 'dev-admin');
+    localStorage.setItem('emp_name', 'Dev Admin');
+    toast.success('Dev access enabled');
+    navigate('/admin');
+  };
+
 
   const handleLogin = async () => {
     if (!name.trim() || !pin) return;
@@ -200,6 +217,21 @@ const Index = () => {
             </span>
             <span className="text-gold/60 group-hover:text-gold transition-colors">›</span>
           </button>
+
+          <div className="mt-2 rounded-2xl border border-dashed border-gold/30 p-3 space-y-2">
+            <p className="font-body text-[10px] uppercase tracking-[0.3em] text-muted-foreground text-center">
+              Dev mode · temporary
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" className="font-body text-xs" onClick={devEnterAdmin}>
+                Enter as Admin
+              </Button>
+              <Button variant="secondary" className="font-body text-xs" onClick={() => navigate('/guest-portal')}>
+                Enter Guest Portal
+              </Button>
+            </div>
+          </div>
+
 
           <p className="font-body text-[10px] tracking-[0.35em] uppercase text-gold/70 text-center mt-6">
             {profile?.resort_name ? `${profile.resort_name.split(' ')[0]} · Where Nature Welcomes You Home` : 'Where Nature Welcomes You Home'}
