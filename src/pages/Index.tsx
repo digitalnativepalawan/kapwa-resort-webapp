@@ -37,6 +37,23 @@ const Index = () => {
     const { permissions } = resolveIdentity(existing);
     navigate(getHomeRoute(permissions), { replace: true });
   }, [navigate]);
+  /** Temporary build-time bypass: creates a local admin session with no backend call. */
+  const devEnterAdmin = () => {
+    setStaffSession(
+      {
+        name: 'Dev Admin',
+        employeeId: 'dev-admin',
+        isAdmin: true,
+        permissions: ['admin'],
+      },
+      false,
+    );
+    localStorage.setItem('emp_id', 'dev-admin');
+    localStorage.setItem('emp_name', 'Dev Admin');
+    toast.success('Dev access enabled');
+    navigate('/admin');
+  };
+
 
   const handleLogin = async () => {
     if (!name.trim() || !pin) return;
