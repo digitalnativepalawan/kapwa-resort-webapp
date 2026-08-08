@@ -111,6 +111,28 @@ const GuestPortal = () => {
     setLoading(false);
   };
 
+  /** Temporary build-time bypass: opens the portal with a demo stay, no booking needed. */
+  const devEnterPortal = () => {
+    const unit = allUnits[0];
+    const portalSession: GuestPortalSession = {
+      booking_id: 'dev-booking',
+      room_id: unit?.id || 'dev-room',
+      room_name: unit?.unit_name || 'Demo Room',
+      guest_name: 'Demo Guest',
+      check_out: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
+      expires: Date.now() + 8 * 60 * 60 * 1000,
+    };
+    sessionStorage.setItem(GUEST_PORTAL_KEY, JSON.stringify(portalSession));
+    setGuestSession({
+      booking_id: portalSession.booking_id,
+      room_id: portalSession.room_id,
+      room_name: portalSession.room_name,
+      guest_name: portalSession.guest_name,
+    });
+    setSession(portalSession);
+    toast.success('Dev access — demo guest');
+  };
+
   const logout = () => {
     sessionStorage.removeItem(GUEST_PORTAL_KEY);
     setSession(null);
