@@ -30,6 +30,55 @@ async function audit(supabase: any, action: string, detail: unknown) {
   } catch (_) { /* audit table shape differences must not break the loop */ }
 }
 
+const PAYMENT_REMINDER_COOLDOWN_MS = 20 * 3600 * 1000; // once per ~day, not every 30-min cycle
+
+/** True if this case has already had a payment_request_sent event within the cooldown window. */
+function recentlyNotified(history: unknown): boolean {
+  if (!Array.isArray(history)) return false;
+  const last = [...history].reverse().find((h: any) => h?.event === "payment_request_sent");
+  if (!last?.at) return false;
+  return Date.now() - new Date(last.at).getTime() < PAYMENT_REMINDER_COOLDOWN_MS;
+}
+
+/**
+ * Send a WhatsApp payment request for an unpaid_balance case. Never throws —
+ * a delivery failure must not stop the loop; it just tries again next cycle.
+ * The agent only ever asks the guest to pay; it never moves money itself.
+ */
+async function sendPaymentRequest(
+  supabase: any,
+  a: PlannedAction,
+  caseRow: any,
+): Promise<{ sent: boolean; detail?: unknown }> {
+  if (recentlyNotified(caseRow.history)) return { sent: false, detail: "cooldown" };
+
+  try {
+    const guestId = a.input?.guest_id as string | undefined;
+    let phone: string | null = null;
+    if (guestId) {
+      const { data } = await supabase.from("resort_ops_guests").select("phone").eq("id", guestId).maybeSingle();
+      phone = data?.phone ?? null;
+    }
+    if (!phone) return { sent: false, detail: "no_guest_phone" };
+
+    const { data, error } = await supabase.functions.invoke("guest-whatsapp", {
+      body: {
+        to: phone,
+        guest_name: caseRow.guest_name ?? "",
+        balance: a.input?.balance ?? null,
+        case_id: caseRow.id,
+      },
+      headers: { "x-internal-secret": Deno.env.get("INTERNAL_FN_SECRET") ?? "" },
+    });
+    if (error || data?.ok === false) {
+      return { sent: false, detail: error?.message ?? data?.error ?? "guest-whatsapp failed" };
+    }
+    return { sent: true, detail: { provider_message_id: data?.provider_message_id ?? null } };
+  } catch (err) {
+    return { sent: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ── Verification rules: every rule checks the DATABASE, not the plan ────────
 const VERIFIERS: Record<string, (supabase: any, c: any) => Promise<{ ok: boolean; evidence: Record<string, unknown> }>> = {
   guest_request_completed: async (supabase, c) => {
@@ -131,11 +180,26 @@ export async function execute(supabase: any, actions: PlannedAction[], maxAction
           }
         }
 
+        let sideEffect: unknown = null;
+        if (a.tool === "send_payment_request" && !mustApprove) {
+          const result = await sendPaymentRequest(supabase, a, c);
+          sideEffect = result;
+          if (result.sent) {
+            await appendHistory(supabase, c.id, "payment_request_sent", result.detail);
+            await audit(supabase, "payment_request_sent", { case_id: c.id, ...(result.detail as object ?? {}) });
+          }
+        }
+
         results.push({
           key: a.key,
           tool: a.tool,
           status: mustApprove ? "queued_for_approval" : "executed",
-          detail: { case_id: c.id, created, llm: triage ? { priority: triage.priority, tokens: triage.tokens } : null },
+          detail: {
+            case_id: c.id,
+            created,
+            llm: triage ? { priority: triage.priority, tokens: triage.tokens } : null,
+            ...(sideEffect ? { whatsapp: sideEffect } : {}),
+          },
         });
         continue;
       }

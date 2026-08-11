@@ -114,15 +114,15 @@ export const TOOLS: ToolDef[] = [
     verification: "task_exists",
   },
   {
-    name: "request_payment_action",
-    kind: "db_action",
-    purpose: "Queue a sensitive payment follow-up (charge, refund, write-off, guest-facing payment reminder) for management approval.",
-    reads: [TABLES.bookings],
+    name: "send_payment_request",
+    kind: "edge_function",
+    purpose: "Send the guest a WhatsApp message with the outstanding balance and the resort's GCash QR code, asking them to pay. The agent only ever REQUESTS payment — it cannot move money. The guest must scan and pay themselves; Sirvoy syncs the payment back and the case verifies itself.",
+    reads: [TABLES.bookings, TABLES.guests],
     writes: [TABLES.cases],
-    sideEffects: [],
-    approvalRequired: true, // NEVER auto-executed: goal 10
-    idempotent: true,
-    verification: "case_approved",
+    sideEffects: ["whatsapp_message"],
+    approvalRequired: false, // safe to auto-send: it requests money, it never moves it
+    idempotent: true, // one reminder per case per day, see executor.ts
+    verification: "balance_cleared",
   },
   {
     name: "escalate_case",
@@ -138,10 +138,13 @@ export const TOOLS: ToolDef[] = [
 ];
 
 // Actions that must NEVER run without human approval, regardless of planner output.
+// send_payment_request is deliberately NOT here: it can only ever ask the guest
+// to pay, never charge or move money itself. Anything that WOULD move money,
+// change a booking, or delete a record stays gated until a real tool exists.
 export const FORBIDDEN_WITHOUT_APPROVAL = [
-  "request_payment_action",
+  "charge_card",
+  "issue_refund",
   "modify_booking",
-  "refund",
   "delete_record",
   "guest_facing_commitment",
 ];

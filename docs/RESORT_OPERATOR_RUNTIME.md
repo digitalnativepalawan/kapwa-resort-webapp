@@ -45,12 +45,25 @@ Env on the `resort-operator` function:
 | `OPENROUTER_API_KEY` | Enables the LLM layer (absent = silently off, loop still runs) |
 | `OPERATOR_MODEL` | Default `anthropic/claude-haiku-4-5` |
 | `AGENT_LLM_ENABLED` | Set `false` = kill switch without removing the key |
-| `INTERNAL_FN_SECRET` | Shared with resort-agent-loop / DB triggers |
+| `INTERNAL_FN_SECRET` | Shared with resort-agent-loop / DB triggers, and required by `guest-whatsapp` |
 | `APP_URL` | Referer sent to OpenRouter |
+
+Env on the `guest-whatsapp` function:
+
+| Var | Meaning |
+|---|---|
+| `WHATSAPP_BRIDGE_URL` | URL of the always-on bridge service's `/send` endpoint |
+| `WHATSAPP_BRIDGE_SECRET` | Shared secret with the bridge (must match `BRIDGE_SECRET` there) |
+| `GCASH_QR_URL` | Public URL of the static GCash QR image sent with each reminder |
+| `RESORT_NAME` | Used in the message text (default "BAIA") |
 
 ## Hard safety boundary
 
-`request_payment_action` and anything in `FORBIDDEN_WITHOUT_APPROVAL` only ever create a `pending_approval` case. The agent never performs payments, refunds, booking changes, deletions, or guest-facing commitments. The LLM can never widen this: the boundary is enforced in `executor.ts` after triage, independent of model output. Approval happens on `/admin/operator` (Live operational cases panel) and calls `{action:"decide"}`.
+Anything in `FORBIDDEN_WITHOUT_APPROVAL` (`charge_card`, `issue_refund`, `modify_booking`, `delete_record`, `guest_facing_commitment`) only ever creates a `pending_approval` case — none of these tools are implemented yet, so today this list is a boundary for future capability, not something currently exercised. The agent never performs payments, refunds, booking changes, deletions, or guest-facing commitments. The LLM can never widen this: the boundary is enforced in `executor.ts` after triage, independent of model output. Approval happens on `/admin/operator` (Live operational cases panel) and calls `{action:"decide"}`.
+
+`send_payment_request` (unpaid_balance domain) is deliberately **not** gated: it can only ever ask the guest to pay — a WhatsApp message with the balance and the resort's GCash QR — never move money itself. The guest scans and pays on their own; Sirvoy syncs `paid_amount` back and `balance_cleared` verifies + auto-resolves the case with no human step. Throttled to one reminder per case per ~20h (`recentlyNotified` in `executor.ts`) so it doesn't re-message every 30-min cycle.
+
+Delivery goes through `guest-whatsapp` (edge function) → an external always-on bridge service (`whatsapp-bridge/`, Baileys-based — there's no official WhatsApp Business API key). See `whatsapp-bridge/README.md` for deploy. A failed send never blocks the loop or the case; it just retries next cycle.
 
 ## Verification
 
