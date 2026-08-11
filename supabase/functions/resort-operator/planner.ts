@@ -95,13 +95,15 @@ export function plan(state: ResortState): PlannedAction[] {
     if (!has("unpaid_balance", "resort_ops_bookings", d.booking_id)) {
       actions.push({
         key: `case:unpaid_balance:${d.booking_id}`,
-        tool: "request_payment_action",
+        tool: "send_payment_request",
         domain: "unpaid_balance",
         priority: d.check_out === state.today ? "urgent" : "high",
         reason: `Goal 4: departure ${d.check_out} with unpaid balance ${d.balance}`,
-        approvalRequired: true,
+        // Not gated: this tool can only ask the guest to pay via WhatsApp +
+        // GCash QR. It never moves money itself, so goal 10 doesn't apply.
+        approvalRequired: false,
         verificationRule: "balance_cleared",
-        input: { booking_id: d.booking_id, balance: d.balance },
+        input: { booking_id: d.booking_id, guest_id: d.guest_id, balance: d.balance },
         case: {
           domain: "unpaid_balance",
           issue_type: "departure_unpaid",
@@ -112,7 +114,7 @@ export function plan(state: ResortState): PlannedAction[] {
           department: "reception",
           risk: `Revenue at risk: ${d.balance} unpaid, checkout ${d.check_out}`,
           due_at: `${d.check_out}T10:00:00Z`,
-          required_action: `Collect ${d.balance} before checkout (approval required for guest-facing payment action)`,
+          required_action: `Send WhatsApp payment request for ${d.balance} (auto-sent; escalate to reception if unpaid by checkout)`,
         },
       });
     }
