@@ -835,6 +835,128 @@ export type Database = {
           },
         ]
       }
+      guest_payment_settings: {
+        Row: {
+          created_at: string
+          gcash_account_name: string
+          gcash_enabled: boolean
+          gcash_number: string
+          gcash_qr_image: string
+          id: string
+          payment_instructions: string
+          qrph_account_name: string
+          qrph_enabled: boolean
+          qrph_qr_image: string
+          require_admin_verification: boolean
+          stripe_enabled: boolean
+          stripe_instructions: string
+          stripe_link: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          gcash_account_name?: string
+          gcash_enabled?: boolean
+          gcash_number?: string
+          gcash_qr_image?: string
+          id?: string
+          payment_instructions?: string
+          qrph_account_name?: string
+          qrph_enabled?: boolean
+          qrph_qr_image?: string
+          require_admin_verification?: boolean
+          stripe_enabled?: boolean
+          stripe_instructions?: string
+          stripe_link?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          gcash_account_name?: string
+          gcash_enabled?: boolean
+          gcash_number?: string
+          gcash_qr_image?: string
+          id?: string
+          payment_instructions?: string
+          qrph_account_name?: string
+          qrph_enabled?: boolean
+          qrph_qr_image?: string
+          require_admin_verification?: boolean
+          stripe_enabled?: boolean
+          stripe_instructions?: string
+          stripe_link?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      guest_payment_submissions: {
+        Row: {
+          agreed_at: string | null
+          agreed_to_charges: boolean
+          amount: number
+          booking_id: string | null
+          created_at: string
+          guest_name: string
+          id: string
+          method: string
+          proof_image: string
+          reference: string
+          review_notes: string
+          reviewed_at: string | null
+          reviewed_by: string
+          room_id: string | null
+          status: string
+          unit_name: string
+          updated_at: string
+        }
+        Insert: {
+          agreed_at?: string | null
+          agreed_to_charges?: boolean
+          amount?: number
+          booking_id?: string | null
+          created_at?: string
+          guest_name?: string
+          id?: string
+          method: string
+          proof_image?: string
+          reference?: string
+          review_notes?: string
+          reviewed_at?: string | null
+          reviewed_by?: string
+          room_id?: string | null
+          status?: string
+          unit_name?: string
+          updated_at?: string
+        }
+        Update: {
+          agreed_at?: string | null
+          agreed_to_charges?: boolean
+          amount?: number
+          booking_id?: string | null
+          created_at?: string
+          guest_name?: string
+          id?: string
+          method?: string
+          proof_image?: string
+          reference?: string
+          review_notes?: string
+          reviewed_at?: string | null
+          reviewed_by?: string
+          room_id?: string | null
+          status?: string
+          unit_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guest_payment_submissions_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "resort_ops_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guest_requests: {
         Row: {
           assigned_at: string | null
