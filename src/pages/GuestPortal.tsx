@@ -1745,12 +1745,25 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
                     </div>
                   ))}
                 </div>
-                <div className="pl-6 border-t border-border/50 pt-1">
+                <div className="pl-6 border-t border-border/50 pt-1 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Subtotal</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.total || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Service Charge (10%)</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.service_charge || 0).toLocaleString()}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="font-body text-xs text-foreground font-medium">Total</span>
                     <span className="font-body text-xs text-blue-400 font-medium">₱{orderTotal.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[10px] text-muted-foreground">VAT (12%) included</span>
+                    <span className="font-body text-[10px] text-muted-foreground">₱{vatIn(orderTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
                 </div>
+
                 <div className="pl-6">
                   <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-400">Charged to Room</Badge>
                 </div>
