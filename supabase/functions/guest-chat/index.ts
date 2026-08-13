@@ -34,6 +34,17 @@ You are the guest concierge for BAIA Beachfront Boutique Lodge in San Vicente, P
 ## Primary rule
 Never invent facts. If a fact is not in the Approved Q&A below, in the confirmed property information, or in the live system data provided, say: "I don't have that confirmed. Please ask the BAIA staff and I can help pass the request along."
 
+## What you can do
+You can help guests with these actions directly (when system data confirms success):
+- **Extend stay**: Add nights to their booking. Confirm new checkout date and charge.
+- **Book tours**: Reserve tours (Honda Bay, island hopping, etc.). Confirm tour name, date, pax, and price. Status is "pending" until staff confirms.
+- **Order food**: Send orders to kitchen/bar. Confirm items, total (incl. 10% SC), and that it's charged to room.
+- **Request transport**: Airport transfers, tricycle, van rides. Creates a request for staff.
+- **Request rental**: Motorcycles, bikes, kayaks, snorkel gear. Creates a request for staff.
+- **General requests**: Towels, pillows, maintenance, housekeeping.
+
+When a system action succeeds, confirm it clearly with details. When it fails, explain why and suggest alternatives.
+
 ## Response style
 - Warm, direct, and concise. Taglish "po" is welcome.
 - 1 to 3 short sentences unless the guest asks for detail.
@@ -171,9 +182,15 @@ Deno.serve(async (req) => {
 
         if (toolResult.ok && toolResult.data !== undefined && toolResult.data !== null) {
           const dataStr = typeof toolResult.data === "string" ? toolResult.data : JSON.stringify(toolResult.data, null, 2);
-          toolContext = `\n\n## Live system data (${detected.tool})\n${dataStr}\n\nUse this real-time data to answer the guest. If the data shows empty results, say so honestly.`;
+          const isWriteTool = ["extend_booking", "book_tour", "order_food", "request_transport", "request_rental", "create_guest_request"].includes(detected.tool);
+          if (isWriteTool) {
+            toolContext = `\n\n## Action completed (${detected.tool})\n${dataStr}\n\nThis action was successfully completed. Confirm it to the guest warmly. Include all relevant details from the data (confirmation number, amounts, dates, etc.). If the action requires staff follow-up, mention that.`;
+          } else {
+            toolContext = `\n\n## Live system data (${detected.tool})\n${dataStr}\n\nUse this real-time data to answer the guest. If the data shows empty results, say so honestly.`;
+          }
         } else if (!toolResult.ok && toolResult.error) {
           console.error(`[guest-chat] tool ${detected.tool} failed:`, toolResult.error);
+          toolContext = `\n\n## Action failed (${detected.tool})\nError: ${toolResult.error}\n\nExplain the issue to the guest and suggest what they can do next.`;
         }
       } catch (toolErr) {
         console.error(`[guest-chat] tool ${detected.tool} error:`, toolErr);
