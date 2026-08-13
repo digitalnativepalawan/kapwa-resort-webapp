@@ -14,6 +14,7 @@ import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receip
 import { Badge } from '@/components/ui/badge';
 import { setGuestSession } from '@/hooks/useGuestSession';
 import TalaConcierge from '@/components/guest/TalaConcierge';
+import GuestPaymentSection from '@/components/guest/GuestPaymentSection';
 
 const GUEST_PORTAL_KEY = 'guest_portal_session';
 
@@ -1925,6 +1926,16 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
           ))}
         </div>
       )}
+
+      {/* Guest payment (Stripe / GCash / QRPH) — unlocked after agreeing to the bill */}
+      <GuestPaymentSection
+        bookingId={session.booking_id || null}
+        roomId={session.room_id || null}
+        unitName={session.room_name}
+        guestName={session.guest_name}
+        balance={balance}
+        billAgreedAt={billAgreedAt || null}
+      />
 
       {/* Bill Agreement */}
       {(transactions.length > 0 || unpaidOrders.length > 0) && (

@@ -36,6 +36,8 @@ import HousekeeperPage from '@/pages/HousekeeperPage';
 import RoomSetup from '@/components/admin/RoomSetup';
 import DeviceManager from '@/components/admin/DeviceManager';
 import BillingConfigForm from '@/components/admin/BillingConfigForm';
+import GuestPaymentSettingsForm from '@/components/admin/GuestPaymentSettingsForm';
+import GuestPaymentVerification from '@/components/admin/GuestPaymentVerification';
 import AuditLogView from '@/components/admin/AuditLogView';
 import OrderArchive from '@/components/admin/OrderArchive';
 import GuestPortalConfig from '@/components/admin/GuestPortalConfig';
@@ -819,6 +821,8 @@ const AdminPage = () => {
 
                 <div className="mt-8"><InvoiceSettingsForm /></div>
                 <div className="mt-8"><BillingConfigForm /></div>
+                <div className="mt-8"><GuestPaymentSettingsForm /></div>
+                <div className="mt-8"><GuestPaymentVerification /></div>
 
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Units / Rooms</h3>
