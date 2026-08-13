@@ -25,7 +25,35 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  /** Tools TALA actually ran for this reply — shown as small chips. */
+  tools?: string[];
+  /** Set when TALA is waiting for a yes/no on a booking, order or charge. */
+  awaitingConfirmation?: boolean;
 }
+
+/** Tool name → guest-readable label for the activity chips. */
+const TOOL_LABELS: Record<string, string> = {
+  room_bill: 'Checked your bill',
+  room_status: 'Checked your room',
+  order_status: 'Checked your order',
+  tour_status: 'Checked your tour',
+  guest_request_status: 'Checked your requests',
+  housekeeping_status: 'Checked housekeeping',
+  menu_lookup: 'Checked the menu',
+  find_events: 'Checked tours',
+  weather_lookup: 'Checked the weather',
+  faq_lookup: 'Checked resort info',
+  check_availability: 'Checked availability',
+  extend_booking: 'Extended your stay',
+  book_tour: 'Booked your tour',
+  order_food: 'Sent your order',
+  request_transport: 'Requested transport',
+  request_rental: 'Requested a rental',
+  create_guest_request: 'Sent your request',
+};
+
+const toolLabel = (tool: string) => TOOL_LABELS[tool] ?? tool.replace(/_/g, ' ');
+
 
 
 
