@@ -1014,3 +1014,372 @@ export async function executeTool(
       return { ok: false, error: `Unknown tool: ${detected.tool}` };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Native tool calling
+//
+// `detectIntent` above is the keyword fallback used when the configured model
+// cannot do tool calling (typically a small local Ollama model). When the model
+// *can* call tools, guest-chat sends the schemas below instead, so the model
+// picks tools by meaning, can call several in one turn, and never gets shadowed
+// by regex ordering ("is my room ready?" no longer lands on housekeeping).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Tools that change data or cost money — never executed without guest confirmation. */
+export const WRITE_TOOLS = new Set([
+  "extend_booking",
+  "book_tour",
+  "order_food",
+  "request_transport",
+  "request_rental",
+  "create_guest_request",
+]);
+
+const strObj = (props: Record<string, { type: string | string[]; description: string; items?: unknown }>) => ({
+  type: "object",
+  properties: props,
+  required: Object.keys(props),
+  additionalProperties: false,
+});
+
+export const GUEST_TOOL_SCHEMAS = [
+  {
+    type: "function",
+    function: {
+      name: "room_bill",
+      description: "Get this guest's current bill: room charges, food and drink, extras, payments and balance.",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "room_status",
+      description: "Whether this guest's own room is ready/clean and its housekeeping state.",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "order_status",
+      description: "Status of this guest's recent food/drink orders — is the kitchen or bar done yet.",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "tour_status",
+      description: "Status of this guest's booked tours (pending or confirmed by staff).",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "guest_request_status",
+      description: "Status of this guest's open service requests (towels, maintenance, transport, rentals).",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "menu_lookup",
+      description: "Look up the live food and drink menu with real prices. Use before quoting prices or placing an order.",
+      parameters: strObj({
+        query: { type: ["string", "null"], description: "Optional search term, e.g. 'burger' or 'coffee'. Null for the whole menu." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "find_events",
+      description: "List tours and activities available in the next few days, with prices.",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "weather_lookup",
+      description: "Current weather in San Vicente, Palawan.",
+      parameters: strObj({}),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "faq_lookup",
+      description: "Search the staff-approved FAQ for resort facts (times, policies, facilities).",
+      parameters: strObj({
+        question: { type: "string", description: "The guest's question, verbatim." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_availability",
+      description: "Check which rooms are free between two dates (YYYY-MM-DD).",
+      parameters: strObj({
+        check_in: { type: "string", description: "Arrival date, YYYY-MM-DD." },
+        check_out: { type: "string", description: "Departure date, YYYY-MM-DD." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "extend_booking",
+      description: "WRITE: extend this guest's stay by N nights and add the charge to their bill.",
+      parameters: strObj({
+        extra_nights: { type: "number", description: "Number of extra nights." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "book_tour",
+      description: "WRITE: reserve a tour for this guest. Stays pending until staff confirm.",
+      parameters: strObj({
+        tour_name: { type: "string", description: "Tour name, e.g. 'Honda Bay island hopping'." },
+        tour_date: { type: "string", description: "Date, YYYY-MM-DD." },
+        pax: { type: "number", description: "Number of people." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "order_food",
+      description: "WRITE: place a food/drink order charged to the room. Call menu_lookup first so item names and prices are real.",
+      parameters: {
+        type: "object",
+        properties: {
+          items: {
+            type: "array",
+            description: "Items to order.",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string", description: "Menu item name, exactly as it appears on the menu." },
+                qty: { type: "number", description: "Quantity." },
+              },
+              required: ["name", "qty"],
+              additionalProperties: false,
+            },
+          },
+          notes: { type: ["string", "null"], description: "Special instructions, or null." },
+        },
+        required: ["items", "notes"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "request_transport",
+      description: "WRITE: request transport (airport transfer, tricycle, van). Creates a staff request.",
+      parameters: strObj({
+        route: { type: "string", description: "From/to, e.g. 'lodge to San Vicente airport'." },
+        date: { type: "string", description: "Date, YYYY-MM-DD." },
+        time: { type: "string", description: "Time, HH:MM (24h)." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "request_rental",
+      description: "WRITE: request a rental (motorbike, bike, kayak, snorkel gear). Creates a staff request.",
+      parameters: strObj({
+        item: { type: "string", description: "What to rent." },
+        duration: { type: "string", description: "How long, e.g. 'half day'." },
+        qty: { type: "number", description: "How many." },
+      }),
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_guest_request",
+      description: "WRITE: send a general request to staff (towels, pillows, maintenance, housekeeping).",
+      parameters: strObj({
+        request_type: { type: "string", description: "One of: General, Housekeeping, Maintenance." },
+        details: { type: "string", description: "What the guest needs." },
+      }),
+    },
+  },
+];
+
+// ── menu_lookup ─────────────────────────────────────────────────────────────
+export async function menuLookup(sb: SupabaseClient, query?: string | null) {
+  let q = sb
+    .from("menu_items")
+    .select("name, price, category, department, description")
+    .eq("available", true)
+    .order("category")
+    .limit(200);
+  if (query && query.trim()) q = q.ilike("name", `%${query.trim()}%`);
+  const { data, error } = await q;
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, data: data || [], empty: !data?.length };
+}
+
+interface MenuRow { name: string; price: number; department?: string | null }
+
+/** Match model-supplied item names against the live menu (exact, then substring). */
+export function matchMenuItems(
+  menu: MenuRow[],
+  requested: Array<{ name: string; qty?: number }>,
+): { items: Array<{ name: string; qty: number; price: number; department: string }>; unmatched: string[] } {
+  const items: Array<{ name: string; qty: number; price: number; department: string }> = [];
+  const unmatched: string[] = [];
+  for (const req of requested) {
+    const wanted = String(req?.name || "").trim().toLowerCase();
+    if (!wanted) continue;
+    const hit =
+      menu.find((m) => m.name.toLowerCase() === wanted) ||
+      menu.find((m) => m.name.toLowerCase().includes(wanted)) ||
+      menu.find((m) => wanted.includes(m.name.toLowerCase()));
+    if (!hit) {
+      unmatched.push(String(req.name));
+      continue;
+    }
+    items.push({
+      name: hit.name,
+      qty: Math.max(1, Math.round(Number(req.qty) || 1)),
+      price: Number(hit.price) || 0,
+      department: String(hit.department || "kitchen").toLowerCase().includes("bar") ? "bar" : "kitchen",
+    });
+  }
+  return { items, unmatched };
+}
+
+/**
+ * Execute a tool the model asked for, with model-supplied arguments.
+ * Guest identity is always injected from the verified server-side context —
+ * the model can never aim a write at another guest's booking.
+ */
+export async function executeToolCall(
+  sb: SupabaseClient,
+  name: string,
+  args: Record<string, any>,
+  guest?: { booking_id?: string; room_id?: string; guest_name?: string; room_name?: string },
+): Promise<{ ok: boolean; data?: any; error?: string }> {
+  const needsGuest = () =>
+    !guest?.booking_id ? { ok: false as const, error: "Guest session required — ask the guest to open their booking in the portal." } : null;
+
+  switch (name) {
+    case "room_bill": {
+      const g = needsGuest(); if (g) return g;
+      return roomBill(sb, guest!.booking_id!);
+    }
+    case "room_status": {
+      const g = needsGuest(); if (g) return g;
+      return roomStatus(sb, guest!.booking_id!);
+    }
+    case "order_status": {
+      const g = needsGuest(); if (g) return g;
+      return orderStatus(sb, guest!.booking_id!);
+    }
+    case "tour_status": {
+      const g = needsGuest(); if (g) return g;
+      return tourStatus(sb, guest!.booking_id!);
+    }
+    case "guest_request_status": {
+      const g = needsGuest(); if (g) return g;
+      return guestRequestStatus(sb, guest!.booking_id!);
+    }
+    case "housekeeping_status":
+      return housekeepingStatus(sb, guest?.room_name || String(args?.unit_name || ""));
+    case "menu_lookup":
+      return menuLookup(sb, args?.query ?? null);
+    case "find_events":
+      return findEvents(sb);
+    case "weather_lookup":
+      return weatherLookup();
+    case "faq_lookup":
+      return faqLookup(sb, String(args?.question || ""));
+    case "check_availability":
+      return checkAvailability(sb, String(args?.check_in || manilaToday()), String(args?.check_out || manilaToday()));
+    case "extend_booking": {
+      const g = needsGuest(); if (g) return g;
+      const nights = Math.max(1, Math.round(Number(args?.extra_nights) || 1));
+      return extendBooking(sb, guest!.booking_id!, nights);
+    }
+    case "book_tour": {
+      const g = needsGuest(); if (g) return g;
+      return bookTour(sb, {
+        booking_id: guest!.booking_id!,
+        guest_name: guest!.guest_name || "Guest",
+        room_id: guest!.room_id || "",
+        tour_name: String(args?.tour_name || ""),
+        tour_date: String(args?.tour_date || manilaToday()),
+        pax: Math.max(1, Math.round(Number(args?.pax) || 2)),
+      });
+    }
+    case "order_food": {
+      const g = needsGuest(); if (g) return g;
+      const requested = Array.isArray(args?.items) ? args.items : [];
+      if (!requested.length) return { ok: false, error: "No items given." };
+      const menu = await menuLookup(sb);
+      const rows = (menu.ok ? menu.data : []) as MenuRow[];
+      const { items, unmatched } = matchMenuItems(rows, requested);
+      if (!items.length) {
+        return { ok: false, error: `None of those items are on the menu (${unmatched.join(", ")}). Show the guest the real menu first.` };
+      }
+      const result = await orderFood(sb, {
+        booking_id: guest!.booking_id!,
+        room_id: guest!.room_id || "",
+        guest_name: guest!.guest_name || "Guest",
+        room_name: guest!.room_name || "",
+        items,
+        notes: args?.notes || undefined,
+      });
+      if (result.ok && unmatched.length) {
+        (result as any).data.unavailable = unmatched;
+      }
+      return result;
+    }
+    case "request_transport": {
+      const g = needsGuest(); if (g) return g;
+      return requestTransport(sb, {
+        booking_id: guest!.booking_id!,
+        room_id: guest!.room_id || "",
+        guest_name: guest!.guest_name || "Guest",
+        route: String(args?.route || ""),
+        date: String(args?.date || manilaToday()),
+        time: String(args?.time || "10:00"),
+      });
+    }
+    case "request_rental": {
+      const g = needsGuest(); if (g) return g;
+      return requestRental(sb, {
+        booking_id: guest!.booking_id!,
+        room_id: guest!.room_id || "",
+        guest_name: guest!.guest_name || "Guest",
+        item: String(args?.item || ""),
+        duration: String(args?.duration || "1 day"),
+        qty: Math.max(1, Math.round(Number(args?.qty) || 1)),
+      });
+    }
+    case "create_guest_request": {
+      const g = needsGuest(); if (g) return g;
+      return createGuestRequest(sb, {
+        booking_id: guest!.booking_id!,
+        room_id: guest!.room_id || "",
+        guest_name: guest!.guest_name || "Guest",
+        request_type: String(args?.request_type || "General"),
+        details: String(args?.details || ""),
+      });
+    }
+    default:
+      return { ok: false, error: `Unknown tool: ${name}` };
+  }
+}
