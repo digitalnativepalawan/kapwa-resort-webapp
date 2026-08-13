@@ -488,6 +488,272 @@ export async function requestRental(
   });
 }
 
+// ── order_status ────────────────────────────────────────────────────────────
+// Check if food/drink order is ready, kitchen/bar status, how long it's been
+export async function orderStatus(sb: SupabaseClient, bookingId: string) {
+  const { data: orders } = await sb
+    .from("orders")
+    .select("id, guest_name, items, status, kitchen_status, bar_status, created_at, total, order_type, location_detail")
+    .eq("room_id", "")
+    .gte("created_at", new Date(Date.now() - 4 * 3600000).toISOString()) // last 4 hours
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  // Filter to this guest's orders
+  const guestOrders = (orders || []).filter((o: any) => {
+    // Match by room_id or guest_name from context
+    return true; // We'll filter by context in the executor
+  });
+
+  // Also check by room_id directly if available
+  const { data: roomOrders } = await sb
+    .from("orders")
+    .select("id, guest_name, items, status, kitchen_status, bar_status, created_at, total, order_type, location_detail")
+    .eq("room_id", bookingId) // This might be room_id, not booking_id
+    .gte("created_at", new Date(Date.now() - 4 * 3600000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  const allOrders = [...(roomOrders || []), ...guestOrders];
+  const uniqueOrders = Array.from(new Map(allOrders.map((o: any) => [o.id, o])).values());
+
+  if (!uniqueOrders.length) return { ok: true as const, data: null, empty: true as const };
+
+  const now = Date.now();
+  const mapped = uniqueOrders.map((o: any) => {
+    const createdAt = new Date(o.created_at).getTime();
+    const minsAgo = Math.round((now - createdAt) / 60000);
+    const items = Array.isArray(o.items) ? o.items : [];
+    const itemNames = items.map((i: any) => `${i.qty || 1}x ${i.name}`).join(", ");
+
+    let kitchenText = "";
+    if (o.kitchen_status === "pending") kitchenText = "Kitchen: preparing";
+    else if (o.kitchen_status === "ready") kitchenText = "Kitchen: ready";
+
+    let barText = "";
+    if (o.bar_status === "pending") barText = "Bar: preparing";
+    else if (o.bar_status === "ready") barText = "Bar: ready";
+
+    return {
+      order_id: o.id,
+      items: itemNames,
+      status: o.status,
+      kitchen: o.kitchen_status,
+      bar: o.bar_status,
+      kitchen_text: kitchenText,
+      bar_text: barText,
+      total: o.total,
+      type: o.order_type,
+      location: o.location_detail,
+      created_at: o.created_at,
+      minutes_ago: minsAgo,
+      ready: o.status === "Served" || (o.kitchen_status === "ready" && o.bar_status === "ready"),
+    };
+  });
+
+  return { ok: true as const, data: mapped };
+}
+
+// ── room_status ─────────────────────────────────────────────────────────────
+// Check if room is ready, housekeeping state, room details
+export async function roomStatus(sb: SupabaseClient, bookingId: string) {
+  const { data: booking } = await sb
+    .from("resort_ops_bookings")
+    .select("id, check_in, check_out, room_id, resort_ops_units(name, type, base_price)")
+    .eq("id", bookingId)
+    .single();
+
+  if (!booking) return { ok: false as const, error: "Booking not found." };
+
+  const unitName = booking.resort_ops_units?.name || "";
+  if (!unitName) return { ok: true as const, data: { room: "Unknown", status: "unknown" } };
+
+  // Check housekeeping status
+  const { data: hk } = await sb
+    .from("housekeeping_orders")
+    .select("status, priority, accepted_by_name, cleaning_by_name, cleaning_completed_at, inspection_completed_at, created_at")
+    .eq("unit_name", unitName)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Check room status from units table
+  const { data: unit } = await sb
+    .from("units")
+    .select("status")
+    .eq("unit_name", unitName)
+    .maybeSingle();
+
+  const hkStatus = hk?.status || "unknown";
+  const roomStatus = unit?.status || "unknown";
+
+  let statusText = "";
+  if (roomStatus === "ready" || roomStatus === "available") statusText = "Ready for use";
+  else if (roomStatus === "occupied") statusText = "Occupied";
+  else if (roomStatus === "dirty" || roomStatus === "needs_cleaning" || roomStatus === "to_clean") statusText = "Needs cleaning";
+  else if (hkStatus === "pending" || hkStatus === "assigned") statusText = "Being cleaned";
+  else if (hkStatus === "in_progress" || hkStatus === "cleaning") statusText = "Being cleaned";
+  else if (hkStatus === "inspection") statusText = "Awaiting inspection";
+  else if (hkStatus === "ready") statusText = "Cleaned and ready";
+  else statusText = roomStatus;
+
+  return {
+    ok: true as const,
+    data: {
+      room: unitName,
+      type: booking.resort_ops_units?.type,
+      status: roomStatus,
+      status_text: statusText,
+      housekeeping: hkStatus,
+      housekeeping_by: hk?.cleaning_by_name || hk?.accepted_by_name || null,
+      cleaned_at: hk?.cleaning_completed_at || null,
+      inspected_at: hk?.inspection_completed_at || null,
+      check_in: booking.check_in,
+      check_out: booking.check_out,
+    },
+  };
+}
+
+// ── tour_status ─────────────────────────────────────────────────────────────
+// Check tour confirmation status, captain/guide confirmed
+export async function tourStatus(sb: SupabaseClient, bookingId: string) {
+  const { data: tours } = await sb
+    .from("tour_bookings")
+    .select("id, tour_name, tour_date, pax, price, status, pickup_time, confirmed_by, captain_confirmed, guide_confirmed, notes, created_at")
+    .eq("booking_id", bookingId)
+    .order("tour_date", { ascending: false })
+    .limit(10);
+
+  if (!tours?.length) return { ok: true as const, data: null, empty: true as const };
+
+  const mapped = tours.map((t: any) => {
+    let statusText = "";
+    if (t.status === "confirmed") statusText = "Confirmed";
+    else if (t.status === "cancelled") statusText = "Cancelled";
+    else if (t.captain_confirmed && t.guide_confirmed) statusText = "Fully confirmed";
+    else if (t.captain_confirmed) statusText = "Captain confirmed, awaiting guide";
+    else if (t.guide_confirmed) statusText = "Guide confirmed, awaiting captain";
+    else statusText = "Pending confirmation";
+
+    return {
+      tour_id: t.id,
+      tour: t.tour_name,
+      date: t.tour_date,
+      pax: t.pax,
+      total: t.price,
+      status: t.status,
+      pickup_time: t.pickup_time,
+      confirmed_by: t.confirmed_by,
+      captain_confirmed: !!t.captain_confirmed,
+      guide_confirmed: !!t.guide_confirmed,
+      status_text: statusText,
+      notes: t.notes,
+    };
+  });
+
+  return { ok: true as const, data: mapped };
+}
+
+// ── guest_request_status ────────────────────────────────────────────────────
+// Check status of existing guest requests
+export async function guestRequestStatus(sb: SupabaseClient, bookingId: string) {
+  const { data: requests } = await sb
+    .from("guest_requests")
+    .select("id, request_type, details, status, created_at, updated_at, assigned_to")
+    .eq("booking_id", bookingId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (!requests?.length) return { ok: true as const, data: null, empty: true as const };
+
+  const mapped = requests.map((r: any) => {
+    let statusText = "";
+    if (r.status === "pending") statusText = "Awaiting staff";
+    else if (r.status === "routed") statusText = "Routed to team";
+    else if (r.status === "in_progress") statusText = "In progress";
+    else if (r.status === "completed") statusText = "Completed";
+    else if (r.status === "cancelled") statusText = "Cancelled";
+    else statusText = r.status;
+
+    return {
+      request_id: r.id,
+      type: r.request_type,
+      details: r.details,
+      status: r.status,
+      status_text: statusText,
+      assigned_to: r.assigned_to,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  });
+
+  return { ok: true as const, data: mapped };
+}
+
+// ── room_bill ───────────────────────────────────────────────────────────────
+// Check charges, balance, payment status
+export async function roomBill(sb: SupabaseClient, bookingId: string) {
+  const { data: booking } = await sb
+    .from("resort_ops_bookings")
+    .select("id, room_rate, addons_total, paid_amount, check_in, check_out, payment_status, resort_ops_units(name)")
+    .eq("id", bookingId)
+    .single();
+
+  if (!booking) return { ok: false as const, error: "Booking not found." };
+
+  // Calculate nights
+  const checkIn = new Date(booking.check_in + "T00:00:00");
+  const checkOut = new Date(booking.check_out + "T00:00:00");
+  const nights = Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / 86400000));
+
+  // Get orders for this room
+  const { data: orders } = await sb
+    .from("orders")
+    .select("id, items, total, service_charge, created_at, order_type, status")
+    .eq("room_id", booking.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const roomCharges = (booking.room_rate || 0) * nights;
+  const orderCharges = (orders || []).reduce((sum: number, o: any) => sum + (o.total || 0) + (o.service_charge || 0), 0);
+  const addons = booking.addons_total || 0;
+  const totalCharges = roomCharges + orderCharges + addons;
+  const paid = booking.paid_amount || 0;
+  const balance = totalCharges - paid;
+
+  const orderList = (orders || []).map((o: any) => {
+    const items = Array.isArray(o.items) ? o.items : [];
+    const itemNames = items.map((i: any) => `${i.qty || 1}x ${i.name}`).join(", ");
+    return {
+      order_id: o.id,
+      items: itemNames,
+      subtotal: o.total,
+      service_charge: o.service_charge,
+      total: (o.total || 0) + (o.service_charge || 0),
+      type: o.order_type,
+      status: o.status,
+      created_at: o.created_at,
+    };
+  });
+
+  return {
+    ok: true as const,
+    data: {
+      room: booking.resort_ops_units?.name,
+      nights,
+      room_rate: booking.room_rate,
+      room_charges: roomCharges,
+      order_charges: orderCharges,
+      addons,
+      total_charges: totalCharges,
+      paid,
+      balance,
+      payment_status: booking.payment_status,
+      orders: orderList,
+    },
+  };
+}
+
 // ── Intent detection ────────────────────────────────────────────────────────
 // Keyword-based: fast, reliable, no LLM tool-calling overhead.
 
@@ -582,6 +848,31 @@ export function detectIntent(message: string): DetectedTool | null {
       tool: "request_rental",
       params: { item: message },
     };
+  }
+
+  // order_status: "where's my order", "is food ready", "order status", "how long", "kitchen"
+  if (/(?:where(?:'s|\s+is)\s+(?:my|the)\s+order|is\s+(?:food|my\s+order|it)\s+ready|order\s+status|how\s+long|kitchen|food\s+(?:ready|done|prepared)|did\s+(?:they|kitchen)|bar\s+(?:ready|done))/i.test(m)) {
+    return { tool: "order_status", params: {} };
+  }
+
+  // room_status: "is my room ready", "room status", "clean yet", "housekeeping"
+  if (/(?:is\s+my\s+room\s+ready|room\s+status|clean\s+yet|room\s+clean|when\s+(?:can|will)\s+(?:i|we)\s+(?:check|get)|room\s+(?:available|prepared))/i.test(m)) {
+    return { tool: "room_status", params: {} };
+  }
+
+  // tour_status: "tour status", "is my tour confirmed", "tour confirmation"
+  if (/(?:tour\s+status|is\s+my\s+tour\s+confirmed|tour\s+confirmation|booked\s+tour|my\s+tour)/i.test(m)) {
+    return { tool: "tour_status", params: {} };
+  }
+
+  // guest_request_status: "request status", "my request", "towel status", "maintenance status"
+  if (/(?:request\s+status|my\s+request|towel\s+status|maintenance\s+status|request\s+update|what\s+about\s+my)/i.test(m)) {
+    return { tool: "guest_request_status", params: {} };
+  }
+
+  // room_bill: "bill", "how much do i owe", "room charges", "my bill", "charges"
+  if (/(?:bill|how\s+much\s+(?:do\s+i\s+owe|is\s+my)|room\s+charges|my\s+bill|charges|total\s+cost|what\s+do\s+i\s+owe)/i.test(m)) {
+    return { tool: "room_bill", params: {} };
   }
 
   // create_guest_request: explicit requests (towels, pillows, maintenance, etc.)
@@ -688,6 +979,36 @@ export async function executeTool(
         duration: detected.params.duration || "1 day",
         qty: parseInt(detected.params.qty || "1", 10),
       });
+    }
+    case "order_status": {
+      if (!guestContext?.booking_id) {
+        return { ok: false, error: "Guest session required to check order status." };
+      }
+      return orderStatus(sb, guestContext.booking_id);
+    }
+    case "room_status": {
+      if (!guestContext?.booking_id) {
+        return { ok: false, error: "Guest session required to check room status." };
+      }
+      return roomStatus(sb, guestContext.booking_id);
+    }
+    case "tour_status": {
+      if (!guestContext?.booking_id) {
+        return { ok: false, error: "Guest session required to check tour status." };
+      }
+      return tourStatus(sb, guestContext.booking_id);
+    }
+    case "guest_request_status": {
+      if (!guestContext?.booking_id) {
+        return { ok: false, error: "Guest session required to check request status." };
+      }
+      return guestRequestStatus(sb, guestContext.booking_id);
+    }
+    case "room_bill": {
+      if (!guestContext?.booking_id) {
+        return { ok: false, error: "Guest session required to check bill." };
+      }
+      return roomBill(sb, guestContext.booking_id);
     }
     default:
       return { ok: false, error: `Unknown tool: ${detected.tool}` };
