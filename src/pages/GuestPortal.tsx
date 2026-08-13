@@ -1897,7 +1897,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
             <span className="font-body text-sm font-medium text-green-400">-₱{Math.abs(t.total_amount || 0).toLocaleString()}</span>
           </div>
         ))}
-        {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
+        {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && roomChargedOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
       </div>
 
       {/* Disputes */}
