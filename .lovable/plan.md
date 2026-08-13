@@ -1,28 +1,31 @@
-## Goal
-Let admins edit every existing Guest FAQ Q&A (not just add/toggle/delete), and make the guest concierge agent actually use those approved answers on every turn.
+# Improve the TALA guest chat agent
 
-## 1. Inline edit for FAQ rows — `src/pages/BotSettingsPage.tsx`
-Today the list at the bottom of `/admin/bot-settings` only shows the question, keywords and answer as static text with an active toggle and a delete button. Add an editable mode per row:
+The guest chat works, but it decides what to do with keyword matching before the model ever sees the message. That causes three concrete problems in the current code:
 
-- Add local state `editingId` plus a `draft` (`{ question, keywords, answer }`).
-- Add a pencil "Edit" button next to the switch/trash on each FAQ row. Clicking it swaps the row's static text for an `Input` (question), `Input` (keywords) and `textarea` (answer) prefilled with the row's current values.
-- Add `Save` and `Cancel` buttons in edit mode. Save calls `supabase.from('guest_faq_memory').update({ question, keywords, answer }).eq('id', id)`, updates local `faqs` state, toasts success, and clears `editingId`. Cancel just clears `editingId`.
-- Keep the existing add / toggle / delete / import / download flows untouched.
+1. **Only one action per message.** `detectIntent()` returns the first match and stops, so "what's my bill and is my room clean?" answers only one of the two.
+2. **Wrong tool from overlapping keywords.** The branches are ordered, so "is my room ready?" hits the housekeeping branch before the room-status branch, and "how long until my food?" hits the FAQ branch before the order-status branch.
+3. **Writes fire with no confirmation.** "I was thinking of extending our stay" runs `extend_booking` immediately and adds a night plus the charge before the guest has agreed to anything.
 
-## 2. Agent loops through approved answers — `api/hermes/chat.js`
-`AgentChatPanel` already fetches active `guest_faq_memory` rows and POSTs them as `memory` to `/api/hermes/chat`, but the handler ignores that field. Update the handler:
+## What changes
 
-- Destructure `memory` from `req.body` alongside `message` and `context`.
-- When `context === 'guest-concierge'` and `memory` is a non-empty array, build an "Approved Q&A" block: for each active entry, one line with `Q: <question>` (plus `(keywords: ...)` if present) and `A: <answer>`.
-- Prepend that block to the existing guest-concierge system prompt with an instruction like: "If the guest's question matches one of these approved Q&A entries, answer using that exact answer. Otherwise follow the rules above."
-- Leave OpenRouter model, temperature and non-guest contexts unchanged.
+**Real tool calling.** The model gets the tool list and picks the tools itself, in a short loop (model → tool results → model, up to 3 rounds). It can call several tools in one turn and pick the right one from meaning rather than keywords.
 
-## 3. Verify
-- Reload `/admin/bot-settings`, edit an existing FAQ (e.g. "Do you have vegetarian options?"), save, refresh — the change persists.
-- Open the guest concierge chat, ask a question that matches an approved FAQ, and confirm the reply mirrors the stored answer rather than a generic "I don't have that confirmed" fallback.
+**Confirmation before anything that costs money or changes the booking.** Read tools (bill, room status, order status, tour status, weather, availability, FAQ, tours) run freely. Write tools (extend stay, book tour, order food, transport, rental, general request) run in two steps: the model first states exactly what it will do and the price, and only executes after the guest confirms in the next message. A pending action is held in the chat session and expires if the guest changes topic.
 
-## Files touched
-- `src/pages/BotSettingsPage.tsx` — inline edit UI + update handler.
-- `api/hermes/chat.js` — accept `memory`, inject Approved Q&A block into the guest prompt.
+**Better food ordering.** Instead of guessing items from the raw sentence, the agent looks up the live menu, matches what the guest asked for, and confirms items and total before sending anything to the kitchen.
 
-No schema changes, no new tables, no changes to import/export or auth wiring.
+**Keyword mode stays as a fallback.** If the configured model does not support tool calling (typical for a small local Ollama model), the agent falls back to the existing `detectIntent` path, so nothing breaks for local setups. Read-only tools still run automatically in that mode; write tools still require confirmation.
+
+**Guest sees what happened.** The response reports which tools ran so the portal can show a small "checked your bill / placed your order" line under the reply.
+
+## Technical notes
+
+- `supabase/functions/_shared/guest-tools.ts`: add a `GUEST_TOOL_SCHEMAS` array (OpenAI function-tool JSON schemas) covering the existing exported tools, mark each read/write, and add a menu-lookup + fuzzy item matcher used by `order_food`. Existing tool functions and `detectIntent` are kept unchanged.
+- `supabase/functions/_shared/modelGateway.ts`: extend `callModel` to accept `tools` and return `tool_calls` alongside content; OpenRouter passes them through natively, Ollama returns none, which triggers the keyword fallback.
+- `supabase/functions/guest-chat/index.ts`: replace the single pre-flight `detectIntent` block with the tool-call loop; add pending-confirmation state carried in the request/response body (`pending_action`), enforce write-tool gating server-side, and return `tools_used[]`.
+- `src/components/guest/TalaConcierge.tsx`: round-trip `pending_action` and render `tools_used` as a subtle activity line.
+- Guest identity stays server-resolved from `booking_id` — the model never supplies booking/room ids; they are injected from the verified context, so a write tool cannot be aimed at another guest.
+
+## Verification
+
+Live calls against the deployed function for: multi-question message (two tools in one turn), "is my room ready?" (room status, not housekeeping), "how long until my food?" (order status), and an extend-stay flow that must ask before it books.
