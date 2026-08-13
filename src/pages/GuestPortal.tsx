@@ -1525,21 +1525,39 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const guestIsOta = bookingData?.platform && otaPlatforms.includes(bookingData.platform.toLowerCase());
   // Filter out accommodation rows for OTA stays
   const visibleTransactions = guestIsOta ? transactions.filter((t: any) => t.transaction_type !== 'accommodation') : transactions;
-  const charges = visibleTransactions.filter((t: any) => (t.total_amount || 0) > 0);
-  const payments = visibleTransactions.filter((t: any) => (t.total_amount || 0) < 0);
-  const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
+  const VAT_RATE = 0.12;
+  const vatIn = (grossInclusive: number) => Math.round((grossInclusive - grossInclusive / (1 + VAT_RATE)) * 100) / 100;
+
+  // Orders already charged to the room folio also appear as ledger rows — never count them twice
+  const roomChargedOrderIds = new Set(roomChargedOrders.map((o: any) => o.id));
+  const ledgerRows = visibleTransactions.filter((t: any) => !(t.order_id && roomChargedOrderIds.has(t.order_id)));
+  const charges = ledgerRows.filter((t: any) => (t.total_amount || 0) > 0);
+  const payments = ledgerRows.filter((t: any) => (t.total_amount || 0) < 0);
+
+  const ledgerChargesTotal = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
   const totalPayments = Math.abs(payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0));
-  const unpaidOrdersTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.total || 0) + (o.service_charge || 0), 0);
-  const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.service_charge || 0), 0);
-  const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
+
+  const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + Number(o.service_charge || 0), 0);
+  const unpaidOrdersSubtotal = unpaidOrders.reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+  const unpaidOrdersTotal = unpaidOrdersSubtotal + unpaidOrdersSCTotal;
+
+  const roomChargedSCTotal = roomChargedOrders.reduce((s: number, o: any) => s + Number(o.service_charge || 0), 0);
+  const roomChargedSubtotal = roomChargedOrders.reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+  const roomChargedTotal = roomChargedSubtotal + roomChargedSCTotal;
+
   // Completed tours/requests are now charged to the room ledger, so only count pending ones here
   const activeToursTotal = pendingTours.reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = pendingRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+
+  const totalCharges = ledgerChargesTotal + roomChargedTotal + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  const vatIncluded = vatIn(totalCharges);
+  const serviceChargeTotal = unpaidOrdersSCTotal + roomChargedSCTotal;
+  const balance = totalCharges - totalPayments;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   // Separate room charges for clear display (accommodation already filtered for OTA)
   const roomCharges = charges.filter((t: any) => ['accommodation', 'room_charge', 'adjustment', 'charge'].includes(t.transaction_type));
+
 
   return (
     <div className="space-y-4">
@@ -1570,45 +1588,68 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
-      {/* Balance summary */}
+      {/* Balance summary — itemized so every peso is traceable */}
       <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex justify-between mb-2">
-          <span className="font-body text-sm text-muted-foreground">Total Charges</span>
-          <span className="font-body text-sm text-foreground">₱{totalCharges.toLocaleString()}</span>
-        </div>
+        <p className="font-display text-xs tracking-wider text-muted-foreground uppercase mb-2">Bill Summary</p>
+        {ledgerChargesTotal > 0 && (
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Room & posted charges</span>
+            <span className="font-body text-sm text-foreground">₱{ledgerChargesTotal.toLocaleString()}</span>
+          </div>
+        )}
+        {roomChargedTotal > 0 && (
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Food & drinks charged to room</span>
+            <span className="font-body text-sm text-foreground">₱{roomChargedTotal.toLocaleString()}</span>
+          </div>
+        )}
         {unpaidOrdersTotal > 0 && (
-          <>
-            <div className="flex justify-between mb-1">
-              <span className="font-body text-sm text-muted-foreground">F&B Subtotal</span>
-              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSubtotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between mb-2">
-              <span className="font-body text-sm text-muted-foreground">Service Charge (10%)</span>
-              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSCTotal.toLocaleString()}</span>
-            </div>
-          </>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Open food & drink orders</span>
+            <span className="font-body text-sm text-amber-400">₱{unpaidOrdersTotal.toLocaleString()}</span>
+          </div>
         )}
         {activeToursTotal > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Tours & Experiences</span>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Tours & experiences (pending)</span>
             <span className="font-body text-sm text-foreground">₱{activeToursTotal.toLocaleString()}</span>
           </div>
         )}
         {activeRequestsTotal > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Transport & Rentals</span>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Transport & rentals (pending)</span>
             <span className="font-body text-sm text-foreground">₱{activeRequestsTotal.toLocaleString()}</span>
           </div>
         )}
-        <div className="flex justify-between mb-2">
-          <span className="font-body text-sm text-muted-foreground">Total Payments</span>
-          <span className="font-body text-sm text-green-400">₱{totalPayments.toLocaleString()}</span>
+        <div className="border-t border-border pt-2 mt-2 flex justify-between">
+          <span className="font-body text-sm text-foreground font-medium">Total Charges</span>
+          <span className="font-body text-sm text-foreground font-medium">₱{totalCharges.toLocaleString()}</span>
         </div>
-        <div className="border-t border-border pt-2 flex justify-between">
-          <span className="font-body text-sm text-foreground font-medium">Balance</span>
-          <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
+        {serviceChargeTotal > 0 && (
+          <div className="flex justify-between mt-1">
+            <span className="font-body text-xs text-muted-foreground">of which Service Charge (10%)</span>
+            <span className="font-body text-xs text-muted-foreground">₱{serviceChargeTotal.toLocaleString()}</span>
+          </div>
+        )}
+        {totalCharges > 0 && (
+          <div className="flex justify-between">
+            <span className="font-body text-xs text-muted-foreground">of which VAT (12%, included)</span>
+            <span className="font-body text-xs text-muted-foreground">₱{vatIncluded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
+        <div className="flex justify-between mt-2">
+          <span className="font-body text-sm text-muted-foreground">Payments received</span>
+          <span className="font-body text-sm text-green-400">−₱{totalPayments.toLocaleString()}</span>
         </div>
+        <div className="border-t border-border pt-2 mt-2 flex justify-between">
+          <span className="font-body text-sm text-foreground font-medium">Balance Due</span>
+          <span className={`font-body text-base font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
+        </div>
+        <p className="font-body text-[11px] text-muted-foreground mt-2">
+          All prices are VAT-inclusive (12% Philippine VAT). Service charge of 10% applies to food & drinks.
+        </p>
       </div>
+
 
       {/* Active F&B orders with itemized breakdown and status */}
       {unpaidOrders.length > 0 && (
@@ -1664,6 +1705,11 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
                     <span className="font-body text-xs text-foreground font-medium">Total</span>
                     <span className="font-body text-xs text-amber-400 font-medium">₱{orderTotal.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[10px] text-muted-foreground">VAT (12%) included</span>
+                    <span className="font-body text-[10px] text-muted-foreground">₱{vatIn(orderTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+                  </div>
                 </div>
                 {o.status === 'Served' && (
                   <div className="pl-6">
@@ -1704,12 +1750,25 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
                     </div>
                   ))}
                 </div>
-                <div className="pl-6 border-t border-border/50 pt-1">
+                <div className="pl-6 border-t border-border/50 pt-1 space-y-0.5">
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Subtotal</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.total || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[11px] text-muted-foreground">Service Charge (10%)</span>
+                    <span className="font-body text-[11px] text-muted-foreground">₱{Number(o.service_charge || 0).toLocaleString()}</span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="font-body text-xs text-foreground font-medium">Total</span>
                     <span className="font-body text-xs text-blue-400 font-medium">₱{orderTotal.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[10px] text-muted-foreground">VAT (12%) included</span>
+                    <span className="font-body text-[10px] text-muted-foreground">₱{vatIn(orderTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  </div>
                 </div>
+
                 <div className="pl-6">
                   <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-400">Charged to Room</Badge>
                 </div>
@@ -1838,7 +1897,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
             <span className="font-body text-sm font-medium text-green-400">-₱{Math.abs(t.total_amount || 0).toLocaleString()}</span>
           </div>
         ))}
-        {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
+        {transactions.length === 0 && !hasPending && unpaidOrders.length === 0 && roomChargedOrders.length === 0 && <p className="font-body text-sm text-muted-foreground text-center">No transactions yet.</p>}
       </div>
 
       {/* Disputes */}
