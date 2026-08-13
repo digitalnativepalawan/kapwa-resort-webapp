@@ -36,6 +36,8 @@ import HousekeeperPage from '@/pages/HousekeeperPage';
 import RoomSetup from '@/components/admin/RoomSetup';
 import DeviceManager from '@/components/admin/DeviceManager';
 import BillingConfigForm from '@/components/admin/BillingConfigForm';
+import GuestPaymentSettingsForm from '@/components/admin/GuestPaymentSettingsForm';
+import GuestPaymentVerification from '@/components/admin/GuestPaymentVerification';
 import AuditLogView from '@/components/admin/AuditLogView';
 import OrderArchive from '@/components/admin/OrderArchive';
 import GuestPortalConfig from '@/components/admin/GuestPortalConfig';
