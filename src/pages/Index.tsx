@@ -43,7 +43,7 @@ const Index = () => {
     let token: string | undefined;
     let permissions = ['admin'];
     let employeeId = 'dev-admin';
-    let name = 'Dev Admin';
+    let empName = 'Dev Admin';
     try {
       const { data } = await supabase.functions.invoke('employee-auth', {
         body: { action: 'admin-verify', name: 'David', pin: '5309' },
@@ -52,15 +52,15 @@ const Index = () => {
         token = data.token;
         permissions = data.permissions?.length ? data.permissions : permissions;
         employeeId = data.employee?.id ?? employeeId;
-        name = data.employee?.name ?? name;
+        empName = data.employee?.name ?? empName;
       }
     } catch {
       // offline / function unavailable — fall back to a local-only session
     }
 
-    setStaffSession({ name, employeeId, isAdmin: true, permissions, token }, false);
+    setStaffSession({ name: empName, employeeId, isAdmin: true, permissions, token }, false);
     localStorage.setItem('emp_id', employeeId);
-    localStorage.setItem('emp_name', name);
+    localStorage.setItem('emp_name', empName);
     toast.success(token ? 'Dev admin session ready' : 'Dev access enabled (local only)');
     navigate('/admin');
   };
