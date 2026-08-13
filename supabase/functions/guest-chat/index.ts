@@ -13,6 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callModel, resolveModelConfig } from "../_shared/modelGateway.ts";
+import { detectIntent, executeTool } from "../_shared/guest-tools.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,12 +32,13 @@ const GUEST_SYSTEM_PROMPT = `# KAPWA Guest Concierge
 You are the guest concierge for BAIA Beachfront Boutique Lodge in San Vicente, Palawan.
 
 ## Primary rule
-Never invent facts. If a fact is not in the Approved Q&A below or in the confirmed property information, say: "I don't have that confirmed. Please ask the BAIA staff and I can help pass the request along."
+Never invent facts. If a fact is not in the Approved Q&A below, in the confirmed property information, or in the live system data provided, say: "I don't have that confirmed. Please ask the BAIA staff and I can help pass the request along."
 
 ## Response style
 - Warm, direct, and concise. Taglish "po" is welcome.
 - 1 to 3 short sentences unless the guest asks for detail.
 - Do not claim a request, booking, order, or reservation is confirmed unless the system confirms it.
+- When live data is provided (availability, weather, tours, etc.), use it directly. Never make up data that isn't provided.
 
 ## Confirmed property information
 - BAIA Beachfront Boutique Lodge, Sitio Panindigan, Poblacion, San Vicente, Palawan.
@@ -58,6 +60,8 @@ interface GuestContext {
   room_name: string;
   check_in: string | null;
   check_out: string | null;
+  booking_id: string;
+  room_id: string;
 }
 
 /**
@@ -71,7 +75,7 @@ async function loadGuestContext(supabase: any, bookingId: unknown): Promise<Gues
   try {
     const { data, error } = await supabase
       .from("resort_ops_bookings")
-      .select("id, status, check_in, check_out, resort_ops_guests(full_name), units(unit_name)")
+      .select("id, status, check_in, check_out, room_id, resort_ops_guests(full_name), units(unit_name)")
       .eq("id", bookingId.trim())
       .maybeSingle();
     if (error || !data) return null;
@@ -82,6 +86,8 @@ async function loadGuestContext(supabase: any, bookingId: unknown): Promise<Gues
       room_name: data.units?.unit_name ?? "",
       check_in: data.check_in ?? null,
       check_out: data.check_out ?? null,
+      booking_id: data.id,
+      room_id: data.room_id ?? "",
     };
   } catch (error) {
     console.error("[guest-chat] guest context lookup failed", error);
@@ -149,14 +155,41 @@ Deno.serve(async (req) => {
       return jsonRes({ error: "Guest concierge is disabled." }, 503);
     }
 
-    // One shared resolver for every agent — see ../_shared/modelGateway.ts.
+    // ── Tool detection & execution ──────────────────────────────────────────
+    // Before hitting the LLM, check if the guest's message triggers a resort tool.
+    // This grounds the LLM in real data instead of letting it guess.
+    let toolContext = "";
+    const detected = detectIntent(message);
+    if (detected) {
+      try {
+        const toolResult = await executeTool(supabase, detected, guest ? {
+          booking_id: guest.booking_id,
+          room_id: guest.room_id,
+          guest_name: guest.guest_name,
+          room_name: guest.room_name,
+        } : undefined);
+
+        if (toolResult.ok && toolResult.data !== undefined && toolResult.data !== null) {
+          const dataStr = typeof toolResult.data === "string" ? toolResult.data : JSON.stringify(toolResult.data, null, 2);
+          toolContext = `\n\n## Live system data (${detected.tool})\n${dataStr}\n\nUse this real-time data to answer the guest. If the data shows empty results, say so honestly.`;
+        } else if (!toolResult.ok && toolResult.error) {
+          console.error(`[guest-chat] tool ${detected.tool} failed:`, toolResult.error);
+        }
+      } catch (toolErr) {
+        console.error(`[guest-chat] tool ${detected.tool} error:`, toolErr);
+      }
+    }
+
+    // ── One shared resolver for every agent ─────────────────────────────────
     const config = await resolveModelConfig(supabase, "guest", { maxTokens: 500 });
     if (config.provider === "openrouter" && !config.apiKey) {
       return jsonRes({ error: "OpenRouter API key not configured in Admin → Agent Settings." }, 400);
     }
 
+    const systemPrompt = buildSystemPrompt(memory, guest) + toolContext;
+
     const messages = [
-      { role: "system", content: buildSystemPrompt(memory, guest) },
+      { role: "system", content: systemPrompt },
       ...history
         .filter((m: any) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
         .slice(-10)
@@ -173,7 +206,13 @@ Deno.serve(async (req) => {
       return jsonRes({ error: detail.slice(0, 300) }, 502);
     }
 
-    return jsonRes({ reply, provider: config.provider, model: config.model, model_source: config.source });
+    return jsonRes({
+      reply,
+      provider: config.provider,
+      model: config.model,
+      model_source: config.source,
+      tool_used: detected?.tool || null,
+    });
   } catch (error) {
     console.error("[guest-chat] error", error);
     return jsonRes({ error: error instanceof Error ? error.message : "Unknown error" }, 500);

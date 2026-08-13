@@ -27,5 +27,5 @@ server/data/
 *.sln
 *.sw?
 dist/
-dist/
 graphify-out/
+.hermes-tmp*

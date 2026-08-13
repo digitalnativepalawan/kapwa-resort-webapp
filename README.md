@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://github.com/digitalnativepalawan/new-KAPWA OS-from-FABLE-5
+**URL**: https://github.com/digitalnativepalawan/kapwa-resort-webapp
 
 ## Resort Operator
 

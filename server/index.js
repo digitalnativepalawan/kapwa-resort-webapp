@@ -7,7 +7,11 @@ import { encryptSecret, decryptSecret, runConfiguredModel } from './lib/model-ru
 import { createResortOperatorAgent } from './agent/resort-operator.js';
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  methods: ['GET', 'POST', 'PUT'],
+  allowedHeaders: ['Content-Type', 'x-kapwa-admin-token'],
+}));
 app.use(express.json({ limit: '2mb' }));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
