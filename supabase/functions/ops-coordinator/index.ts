@@ -354,7 +354,9 @@ Deno.serve(async (req) => {
       provider,
       model,
       model_source: modelConfig.source,
+      delivery_error: deliveryError,
       model_error: modelError,
+
       generated_at: new Date().toISOString(),
     });
   } catch (error) {
