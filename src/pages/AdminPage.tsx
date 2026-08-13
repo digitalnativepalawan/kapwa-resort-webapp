@@ -821,6 +821,8 @@ const AdminPage = () => {
 
                 <div className="mt-8"><InvoiceSettingsForm /></div>
                 <div className="mt-8"><BillingConfigForm /></div>
+                <div className="mt-8"><GuestPaymentSettingsForm /></div>
+                <div className="mt-8"><GuestPaymentVerification /></div>
 
                 <section className="mt-8">
                   <h3 className="font-display text-sm tracking-wider text-foreground mb-4">Units / Rooms</h3>
