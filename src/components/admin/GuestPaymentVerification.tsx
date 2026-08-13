@@ -28,7 +28,7 @@ const GuestPaymentVerification = () => {
   const review = async (row: any, status: 'verified' | 'rejected') => {
     setBusy(row.id);
     const staff = getStaffSession();
-    const reviewer = staff?.name || staff?.display_name || 'Admin';
+    const reviewer = staff?.name || 'Admin';
     try {
       const { error } = await (supabase.from('guest_payment_submissions') as any).update({
         status,
