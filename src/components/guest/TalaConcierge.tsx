@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Send, X, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, X, Loader2, Check } from 'lucide-react';
 
 /**
  * TALA — the guest concierge.
@@ -25,7 +25,35 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  /** Tools TALA actually ran for this reply — shown as small chips. */
+  tools?: string[];
+  /** Set when TALA is waiting for a yes/no on a booking, order or charge. */
+  awaitingConfirmation?: boolean;
 }
+
+/** Tool name → guest-readable label for the activity chips. */
+const TOOL_LABELS: Record<string, string> = {
+  room_bill: 'Checked your bill',
+  room_status: 'Checked your room',
+  order_status: 'Checked your order',
+  tour_status: 'Checked your tour',
+  guest_request_status: 'Checked your requests',
+  housekeeping_status: 'Checked housekeeping',
+  menu_lookup: 'Checked the menu',
+  find_events: 'Checked tours',
+  weather_lookup: 'Checked the weather',
+  faq_lookup: 'Checked resort info',
+  check_availability: 'Checked availability',
+  extend_booking: 'Extended your stay',
+  book_tour: 'Booked your tour',
+  order_food: 'Sent your order',
+  request_transport: 'Requested transport',
+  request_rental: 'Requested a rental',
+  create_guest_request: 'Sent your request',
+};
+
+const toolLabel = (tool: string) => TOOL_LABELS[tool] ?? tool.replace(/_/g, ' ');
+
 
 
 
@@ -122,6 +150,8 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** A booking/order TALA proposed and is waiting for the guest to confirm. */
+  const [pendingAction, setPendingAction] = useState<{ tool: string; args: Record<string, unknown> } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -133,11 +163,11 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+  const sendMessage = async (override?: string) => {
+    const userMessage = (override ?? input).trim();
+    if (!userMessage || loading) return;
 
-    const userMessage = input.trim();
-    setInput('');
+    if (!override) setInput('');
     setMessages(current => [...current, { role: 'user', content: userMessage, timestamp: new Date() }]);
     setLoading(true);
 
@@ -147,18 +177,37 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
 
       let reply: string;
+      let tools: string[] = [];
+      let awaiting = false;
       if (settings.provider === 'ollama') {
         reply = await callOllama(settings, buildSystemPrompt(memory), history, userMessage);
       } else {
         const { data, error } = await supabase.functions.invoke('guest-chat', {
-          body: { message: userMessage, memory, history, booking_id: bookingId },
+          body: {
+            message: userMessage,
+            memory,
+            history,
+            booking_id: bookingId,
+            // Lets TALA finish a booking/order the guest just agreed to.
+            pending_action: pendingAction,
+          },
         });
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
         reply = data?.reply || 'No response from the guest concierge.';
+        tools = Array.isArray(data?.tools_used) ? data.tools_used : [];
+        setPendingAction(data?.pending_action ?? null);
+        awaiting = Boolean(data?.pending_action);
       }
 
-      setMessages(current => [...current, { role: 'assistant', content: reply, timestamp: new Date() }]);
+      setMessages(current => [...current, {
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date(),
+        tools,
+        awaitingConfirmation: awaiting,
+      }]);
+
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
@@ -199,6 +248,23 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
                 <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-lg px-3 py-2 font-body text-sm ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary border border-border text-foreground'}`}>
                     <p className="whitespace-pre-wrap">{message.content}</p>
+
+                    {!!message.tools?.length && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {message.tools.map((tool, toolIndex) => (
+                          <span key={toolIndex} className="inline-flex items-center gap-1 rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <Check className="h-3 w-3" />{toolLabel(tool)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {message.awaitingConfirmation && index === messages.length - 1 && !loading && (
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" className="h-7 px-3 text-xs" onClick={() => sendMessage('Yes, please confirm.')}>Confirm</Button>
+                        <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => sendMessage('No, cancel that.')}>Cancel</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -208,9 +274,10 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
 
           <div className="px-4 py-3 border-t border-border flex gap-2">
             <Input ref={inputRef} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendMessage(); }} placeholder="Ask about your stay..." disabled={loading} maxLength={1000} />
-            <Button onClick={sendMessage} disabled={loading || !input.trim()} className="px-3" aria-label="Send message">
+            <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} className="px-3" aria-label="Send message">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
+
           </div>
         </DialogContent>
       </Dialog>

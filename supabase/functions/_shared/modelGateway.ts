@@ -173,3 +173,73 @@ export async function callModel(
   if (!reply) throw new ModelUnavailableError("empty_response");
   return reply;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool-calling variant.
+//
+// Returns the raw assistant message so callers can run a tool loop. OpenRouter
+// passes OpenAI-style `tools` / `tool_calls` straight through. Ollama's /api/chat
+// has no equivalent here, so it returns no tool calls and the caller falls back
+// to keyword intent detection.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+export interface ModelTurn {
+  content: string;
+  tool_calls: ToolCall[];
+  /** False when the provider/model can't do native tool calling. */
+  supportsTools: boolean;
+}
+
+export async function callModelWithTools(
+  config: ModelConfig,
+  messages: Array<Record<string, unknown>>,
+  tools: unknown[],
+): Promise<ModelTurn> {
+  if (config.provider === "ollama") {
+    const content = await callModel(config, messages as Array<{ role: string; content: string }>);
+    return { content, tool_calls: [], supportsTools: false };
+  }
+
+  if (!config.apiKey) throw new ModelUnavailableError();
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("APP_URL") ?? "https://kapwa.local",
+      "X-Title": "KAPWA Hospitality OS",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages,
+      tools,
+      tool_choice: "auto",
+      max_tokens: config.maxTokens,
+      temperature: config.temperature,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = (await response.text()).slice(0, 400);
+    // Model doesn't accept tools — let the caller degrade to keyword mode.
+    if (response.status === 400 && /tool|function/i.test(text)) {
+      return { content: "", tool_calls: [], supportsTools: false };
+    }
+    throw new Error(`OpenRouter ${response.status}: ${text}`);
+  }
+
+  const data = await response.json();
+  const message = data?.choices?.[0]?.message ?? {};
+  return {
+    content: typeof message.content === "string" ? message.content.trim() : "",
+    tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+    supportsTools: true,
+  };
+}

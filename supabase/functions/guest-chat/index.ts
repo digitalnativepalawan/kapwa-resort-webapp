@@ -12,8 +12,66 @@
 // the remaining gap and the signed-session plan that closes it.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { callModel, resolveModelConfig } from "../_shared/modelGateway.ts";
-import { detectIntent, executeTool } from "../_shared/guest-tools.ts";
+import { callModel, callModelWithTools, resolveModelConfig, type ModelConfig } from "../_shared/modelGateway.ts";
+import {
+  detectIntent,
+  executeTool,
+  executeToolCall,
+  GUEST_TOOL_SCHEMAS,
+  WRITE_TOOLS,
+} from "../_shared/guest-tools.ts";
+
+/** Appended to the persona so the model knows the confirmation contract. */
+const TOOL_POLICY = `
+
+## Tool rules
+- Use the tools for anything about this stay. Never guess a bill, a price, a room state or an order status.
+- Call menu_lookup before quoting food prices or placing an order — use the real item names.
+- Read-only tools run immediately. Anything that spends money or changes the booking (order_food, book_tour, extend_booking, request_transport, request_rental, create_guest_request) is only a *proposal*: state exactly what you will do with the price and date, then ask the guest to confirm. Never say "booked", "ordered" or "confirmed" until a tool result says executed: true.`;
+
+const AFFIRMATIVE = /^\s*(yes|yep|yeah|yup|sure|ok|okay|okey|go|go ahead|do it|please do|confirm(ed)?|proceed|sige|opo|oo|tama|payag|correct|that'?s right|book it|order it)\b/i;
+const NEGATIVE = /^\s*(no|nope|nah|cancel|stop|don'?t|do not|wag|huwag|hindi|not now|never ?mind)\b/i;
+
+const isAffirmative = (text: string) => AFFIRMATIVE.test(text);
+const isNegative = (text: string) => NEGATIVE.test(text);
+const stringify = (value: unknown) =>
+  typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
+
+/**
+ * Keyword path for models without native tool calling (small local Ollama
+ * models). Runs at most one detected tool and injects its result as context.
+ */
+async function keywordFallback(
+  supabase: any,
+  config: ModelConfig,
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  message: string,
+  guestCtx: Record<string, string> | undefined,
+  toolsUsed: string[],
+): Promise<string> {
+  let toolContext = "";
+  const detected = detectIntent(message);
+  if (detected) {
+    try {
+      const result = await executeTool(supabase, detected, guestCtx as any);
+      toolsUsed.push(detected.tool);
+      if (result.ok && result.data !== undefined && result.data !== null) {
+        toolContext = `\n\n## Live system data (${detected.tool})\n${stringify(result.data)}\n\nUse this real data. If it is empty, say so honestly.`;
+      } else if (!result.ok && result.error) {
+        toolContext = `\n\n## Action failed (${detected.tool})\nError: ${result.error}\n\nExplain the issue and suggest what the guest can do next.`;
+      }
+    } catch (error) {
+      console.error(`[guest-chat] keyword tool ${detected.tool} failed`, error);
+    }
+  }
+  return await callModel(config, [
+    { role: "system", content: systemPrompt + toolContext },
+    ...history,
+    { role: "user", content: message },
+  ]);
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -186,72 +244,132 @@ Deno.serve(async (req) => {
       return jsonRes({ error: "Guest concierge is disabled." }, 503);
     }
 
-    // ── Tool detection & execution ──────────────────────────────────────────
-    // Before hitting the LLM, check if the guest's message triggers a resort tool.
-    // This grounds the LLM in real data instead of letting it guess.
-    let toolContext = "";
-    const detected = detectIntent(message);
-    if (detected) {
-      try {
-        const toolResult = await executeTool(supabase, detected, guest ? {
+    const guestCtx = guest
+      ? {
           booking_id: guest.booking_id,
           room_id: guest.room_id,
           guest_name: guest.guest_name,
           room_name: guest.room_name,
-        } : undefined);
-
-        if (toolResult.ok && toolResult.data !== undefined && toolResult.data !== null) {
-          const dataStr = typeof toolResult.data === "string" ? toolResult.data : JSON.stringify(toolResult.data, null, 2);
-          const isWriteTool = ["extend_booking", "book_tour", "order_food", "request_transport", "request_rental", "create_guest_request"].includes(detected.tool);
-          if (isWriteTool) {
-            toolContext = `\n\n## Action completed (${detected.tool})\n${dataStr}\n\nThis action was successfully completed. Confirm it to the guest warmly. Include all relevant details from the data (confirmation number, amounts, dates, etc.). If the action requires staff follow-up, mention that.`;
-          } else {
-            toolContext = `\n\n## Live system data (${detected.tool})\n${dataStr}\n\nUse this real-time data to answer the guest. If the data shows empty results, say so honestly.`;
-          }
-        } else if (!toolResult.ok && toolResult.error) {
-          console.error(`[guest-chat] tool ${detected.tool} failed:`, toolResult.error);
-          toolContext = `\n\n## Action failed (${detected.tool})\nError: ${toolResult.error}\n\nExplain the issue to the guest and suggest what they can do next.`;
         }
-      } catch (toolErr) {
-        console.error(`[guest-chat] tool ${detected.tool} error:`, toolErr);
-      }
-    }
+      : undefined;
 
-    // ── One shared resolver for every agent ─────────────────────────────────
-    const config = await resolveModelConfig(supabase, "guest", { maxTokens: 500 });
+    const config = await resolveModelConfig(supabase, "guest", { maxTokens: 700 });
     if (config.provider === "openrouter" && !config.apiKey) {
       return jsonRes({ error: "OpenRouter API key not configured in Admin → Agent Settings." }, 400);
     }
 
-    const systemPrompt = buildSystemPrompt(memory, guest) + toolContext;
+    const basePrompt = buildSystemPrompt(memory, guest);
+    const trimmedHistory = history
+      .filter((m: any) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
+      .slice(-10)
+      .map((m: any) => ({ role: m.role, content: m.content }));
 
-    const messages = [
+    const toolsUsed: string[] = [];
+
+    // ── Pending write confirmation ──────────────────────────────────────────
+    // A write tool never runs on the turn the model proposes it. The proposal
+    // is returned to the client as `pending_action` and only executes when the
+    // guest's next message agrees to it.
+    let confirmedContext = "";
+    let pendingAction: { tool: string; args: Record<string, unknown> } | null = null;
+    const incomingPending =
+      body?.pending_action && typeof body.pending_action?.tool === "string" &&
+      WRITE_TOOLS.has(body.pending_action.tool)
+        ? { tool: String(body.pending_action.tool), args: (body.pending_action.args ?? {}) as Record<string, unknown> }
+        : null;
+
+    if (incomingPending) {
+      if (isAffirmative(message)) {
+        const result = await executeToolCall(supabase, incomingPending.tool, incomingPending.args, guestCtx);
+        toolsUsed.push(incomingPending.tool);
+        confirmedContext = result.ok
+          ? `\n\n## Confirmed action completed (${incomingPending.tool})\n${stringify(result.data)}\n\nThe guest just confirmed this and it is now done. Confirm it warmly with the concrete details (amounts, dates, reference numbers).`
+          : `\n\n## Confirmed action failed (${incomingPending.tool})\nError: ${result.error}\n\nApologise, explain plainly, and offer the next step.`;
+      } else if (isNegative(message)) {
+        confirmedContext = `\n\n## Pending action cancelled\nThe guest declined the proposed ${incomingPending.tool}. Nothing was done. Acknowledge briefly and ask what they'd prefer.`;
+      }
+    }
+
+    const systemPrompt = basePrompt + TOOL_POLICY + confirmedContext;
+
+    // ── Native tool-calling loop ────────────────────────────────────────────
+    const messages: Array<Record<string, unknown>> = [
       { role: "system", content: systemPrompt },
-      ...history
-        .filter((m: any) => m && typeof m.content === "string" && (m.role === "user" || m.role === "assistant"))
-        .slice(-10)
-        .map((m: any) => ({ role: m.role, content: m.content })),
+      ...trimmedHistory,
       { role: "user", content: message },
     ];
 
-    let reply: string;
+    let reply = "";
+    let usedKeywordFallback = false;
+
     try {
-      reply = await callModel(config, messages);
+      for (let round = 0; round < 3; round++) {
+        const turn = await callModelWithTools(config, messages, GUEST_TOOL_SCHEMAS);
+
+        if (!turn.supportsTools) {
+          usedKeywordFallback = true;
+          reply = await keywordFallback(supabase, config, systemPrompt, trimmedHistory, message, guestCtx, toolsUsed);
+          break;
+        }
+
+        if (!turn.tool_calls.length) {
+          reply = turn.content;
+          break;
+        }
+
+        messages.push({ role: "assistant", content: turn.content || null, tool_calls: turn.tool_calls });
+
+        for (const call of turn.tool_calls) {
+          const name = call.function?.name || "";
+          let args: Record<string, unknown> = {};
+          try {
+            args = call.function?.arguments ? JSON.parse(call.function.arguments) : {};
+          } catch {
+            args = {};
+          }
+
+          let payload: string;
+          if (WRITE_TOOLS.has(name) && !(incomingPending && incomingPending.tool === name && isAffirmative(message))) {
+            // Propose, don't perform.
+            if (!pendingAction) pendingAction = { tool: name, args };
+            payload = JSON.stringify({
+              executed: false,
+              awaiting_guest_confirmation: true,
+              proposed: { tool: name, args },
+              instruction:
+                "NOT DONE YET. Tell the guest exactly what you will do, including the price/date/quantity, and ask them to confirm. Do not say it is booked, ordered or confirmed.",
+            });
+          } else {
+            const result = await executeToolCall(supabase, name, args, guestCtx);
+            toolsUsed.push(name);
+            payload = JSON.stringify({ executed: true, ok: result.ok, data: result.data ?? null, error: result.error ?? null });
+          }
+
+          messages.push({ role: "tool", tool_call_id: call.id, name, content: payload });
+        }
+      }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       console.error("[guest-chat] model error", detail);
       return jsonRes({ error: detail.slice(0, 300) }, 502);
     }
 
+    if (!reply) reply = "Sorry po, I couldn't put that together. Could you say it again?";
+
     return jsonRes({
       reply,
       provider: config.provider,
       model: config.model,
       model_source: config.source,
-      tool_used: detected?.tool || null,
+      tools_used: toolsUsed,
+      pending_action: pendingAction,
+      mode: usedKeywordFallback ? "keyword" : "tools",
+      // Back-compat with older clients.
+      tool_used: toolsUsed[0] || null,
     });
   } catch (error) {
     console.error("[guest-chat] error", error);
     return jsonRes({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
+
