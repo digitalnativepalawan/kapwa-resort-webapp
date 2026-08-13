@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageSquare, Send, X, Loader2 } from 'lucide-react';
+import { MessageSquare, Send, X, Loader2, Check } from 'lucide-react';
 
 /**
  * TALA — the guest concierge.
