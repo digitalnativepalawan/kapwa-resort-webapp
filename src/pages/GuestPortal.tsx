@@ -1705,6 +1705,11 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
                     <span className="font-body text-xs text-foreground font-medium">Total</span>
                     <span className="font-body text-xs text-amber-400 font-medium">₱{orderTotal.toLocaleString()}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span className="font-body text-[10px] text-muted-foreground">VAT (12%) included</span>
+                    <span className="font-body text-[10px] text-muted-foreground">₱{vatIn(orderTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+                  </div>
                 </div>
                 {o.status === 'Served' && (
                   <div className="pl-6">
