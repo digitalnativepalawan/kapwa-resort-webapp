@@ -80,10 +80,15 @@ const MenuPage = () => {
     refetchInterval: 30000,
   });
 
-  // Derive categories from items as fallback when menu_categories is empty
-  const derivedCategories = categories.length > 0
-    ? categories
-    : [...new Set(menuItems.map(i => i.category))].map((name, idx) => ({ id: name, name, sort_order: idx }));
+  // Show configured categories that actually have items, plus any item
+  // categories missing from menu_categories (config names often differ).
+  const itemCategoryNames = [...new Set(menuItems.map(i => i.category).filter(Boolean))];
+  const derivedCategories = [
+    ...categories.filter((c: any) => itemCategoryNames.includes(c.name)),
+    ...itemCategoryNames
+      .filter(name => !categories.some((c: any) => c.name === name))
+      .map((name, idx) => ({ id: name, name, sort_order: 1000 + idx })),
+  ];
 
   useEffect(() => {
     if (derivedCategories.length > 0 && !activeCategory) {
