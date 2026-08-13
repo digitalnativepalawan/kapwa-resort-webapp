@@ -248,6 +248,23 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
                 <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-lg px-3 py-2 font-body text-sm ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary border border-border text-foreground'}`}>
                     <p className="whitespace-pre-wrap">{message.content}</p>
+
+                    {!!message.tools?.length && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {message.tools.map((tool, toolIndex) => (
+                          <span key={toolIndex} className="inline-flex items-center gap-1 rounded-full border border-border bg-background/60 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <Check className="h-3 w-3" />{toolLabel(tool)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {message.awaitingConfirmation && index === messages.length - 1 && !loading && (
+                      <div className="mt-2 flex gap-2">
+                        <Button size="sm" className="h-7 px-3 text-xs" onClick={() => sendMessage('Yes, please confirm.')}>Confirm</Button>
+                        <Button size="sm" variant="outline" className="h-7 px-3 text-xs" onClick={() => sendMessage('No, cancel that.')}>Cancel</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -257,9 +274,10 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
 
           <div className="px-4 py-3 border-t border-border flex gap-2">
             <Input ref={inputRef} value={input} onChange={event => setInput(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') sendMessage(); }} placeholder="Ask about your stay..." disabled={loading} maxLength={1000} />
-            <Button onClick={sendMessage} disabled={loading || !input.trim()} className="px-3" aria-label="Send message">
+            <Button onClick={() => sendMessage()} disabled={loading || !input.trim()} className="px-3" aria-label="Send message">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
+
           </div>
         </DialogContent>
       </Dialog>
