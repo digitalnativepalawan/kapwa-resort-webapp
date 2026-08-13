@@ -161,11 +161,11 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+  const sendMessage = async (override?: string) => {
+    const userMessage = (override ?? input).trim();
+    if (!userMessage || loading) return;
 
-    const userMessage = input.trim();
-    setInput('');
+    if (!override) setInput('');
     setMessages(current => [...current, { role: 'user', content: userMessage, timestamp: new Date() }]);
     setLoading(true);
 
@@ -175,18 +175,37 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
 
       let reply: string;
+      let tools: string[] = [];
+      let awaiting = false;
       if (settings.provider === 'ollama') {
         reply = await callOllama(settings, buildSystemPrompt(memory), history, userMessage);
       } else {
         const { data, error } = await supabase.functions.invoke('guest-chat', {
-          body: { message: userMessage, memory, history, booking_id: bookingId },
+          body: {
+            message: userMessage,
+            memory,
+            history,
+            booking_id: bookingId,
+            // Lets TALA finish a booking/order the guest just agreed to.
+            pending_action: pendingAction,
+          },
         });
         if (error) throw error;
         if (data?.error) throw new Error(data.error);
         reply = data?.reply || 'No response from the guest concierge.';
+        tools = Array.isArray(data?.tools_used) ? data.tools_used : [];
+        setPendingAction(data?.pending_action ?? null);
+        awaiting = Boolean(data?.pending_action);
       }
 
-      setMessages(current => [...current, { role: 'assistant', content: reply, timestamp: new Date() }]);
+      setMessages(current => [...current, {
+        role: 'assistant',
+        content: reply,
+        timestamp: new Date(),
+        tools,
+        awaitingConfirmation: awaiting,
+      }]);
+
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       setMessages(current => [...current, {
