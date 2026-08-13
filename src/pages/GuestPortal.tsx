@@ -14,6 +14,7 @@ import { LogOut, UtensilsCrossed, MapPin, Car, Bike, MessageSquare, Star, Receip
 import { Badge } from '@/components/ui/badge';
 import { setGuestSession } from '@/hooks/useGuestSession';
 import TalaConcierge from '@/components/guest/TalaConcierge';
+import GuestPaymentSection from '@/components/guest/GuestPaymentSection';
 
 const GUEST_PORTAL_KEY = 'guest_portal_session';
 
