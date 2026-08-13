@@ -12,8 +12,66 @@
 // the remaining gap and the signed-session plan that closes it.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { callModel, resolveModelConfig } from "../_shared/modelGateway.ts";
-import { detectIntent, executeTool } from "../_shared/guest-tools.ts";
+import { callModel, callModelWithTools, resolveModelConfig, type ModelConfig } from "../_shared/modelGateway.ts";
+import {
+  detectIntent,
+  executeTool,
+  executeToolCall,
+  GUEST_TOOL_SCHEMAS,
+  WRITE_TOOLS,
+} from "../_shared/guest-tools.ts";
+
+/** Appended to the persona so the model knows the confirmation contract. */
+const TOOL_POLICY = `
+
+## Tool rules
+- Use the tools for anything about this stay. Never guess a bill, a price, a room state or an order status.
+- Call menu_lookup before quoting food prices or placing an order — use the real item names.
+- Read-only tools run immediately. Anything that spends money or changes the booking (order_food, book_tour, extend_booking, request_transport, request_rental, create_guest_request) is only a *proposal*: state exactly what you will do with the price and date, then ask the guest to confirm. Never say "booked", "ordered" or "confirmed" until a tool result says executed: true.`;
+
+const AFFIRMATIVE = /^\s*(yes|yep|yeah|yup|sure|ok|okay|okey|go|go ahead|do it|please do|confirm(ed)?|proceed|sige|opo|oo|tama|payag|correct|that'?s right|book it|order it)\b/i;
+const NEGATIVE = /^\s*(no|nope|nah|cancel|stop|don'?t|do not|wag|huwag|hindi|not now|never ?mind)\b/i;
+
+const isAffirmative = (text: string) => AFFIRMATIVE.test(text);
+const isNegative = (text: string) => NEGATIVE.test(text);
+const stringify = (value: unknown) =>
+  typeof value === "string" ? value : JSON.stringify(value ?? null, null, 2);
+
+/**
+ * Keyword path for models without native tool calling (small local Ollama
+ * models). Runs at most one detected tool and injects its result as context.
+ */
+async function keywordFallback(
+  supabase: any,
+  config: ModelConfig,
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  message: string,
+  guestCtx: Record<string, string> | undefined,
+  toolsUsed: string[],
+): Promise<string> {
+  let toolContext = "";
+  const detected = detectIntent(message);
+  if (detected) {
+    try {
+      const result = await executeTool(supabase, detected, guestCtx as any);
+      toolsUsed.push(detected.tool);
+      if (result.ok && result.data !== undefined && result.data !== null) {
+        toolContext = `\n\n## Live system data (${detected.tool})\n${stringify(result.data)}\n\nUse this real data. If it is empty, say so honestly.`;
+      } else if (!result.ok && result.error) {
+        toolContext = `\n\n## Action failed (${detected.tool})\nError: ${result.error}\n\nExplain the issue and suggest what the guest can do next.`;
+      }
+    } catch (error) {
+      console.error(`[guest-chat] keyword tool ${detected.tool} failed`, error);
+    }
+  }
+  return await callModel(config, [
+    { role: "system", content: systemPrompt + toolContext },
+    ...history,
+    { role: "user", content: message },
+  ]);
+}
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
