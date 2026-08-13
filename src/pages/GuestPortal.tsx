@@ -1588,45 +1588,68 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
-      {/* Balance summary */}
+      {/* Balance summary — itemized so every peso is traceable */}
       <div className="bg-card border border-border rounded-lg p-4">
-        <div className="flex justify-between mb-2">
-          <span className="font-body text-sm text-muted-foreground">Total Charges</span>
-          <span className="font-body text-sm text-foreground">₱{totalCharges.toLocaleString()}</span>
-        </div>
+        <p className="font-display text-xs tracking-wider text-muted-foreground uppercase mb-2">Bill Summary</p>
+        {ledgerChargesTotal > 0 && (
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Room & posted charges</span>
+            <span className="font-body text-sm text-foreground">₱{ledgerChargesTotal.toLocaleString()}</span>
+          </div>
+        )}
+        {roomChargedTotal > 0 && (
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Food & drinks charged to room</span>
+            <span className="font-body text-sm text-foreground">₱{roomChargedTotal.toLocaleString()}</span>
+          </div>
+        )}
         {unpaidOrdersTotal > 0 && (
-          <>
-            <div className="flex justify-between mb-1">
-              <span className="font-body text-sm text-muted-foreground">F&B Subtotal</span>
-              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSubtotal.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between mb-2">
-              <span className="font-body text-sm text-muted-foreground">Service Charge (10%)</span>
-              <span className="font-body text-sm text-amber-400">₱{unpaidOrdersSCTotal.toLocaleString()}</span>
-            </div>
-          </>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Open food & drink orders</span>
+            <span className="font-body text-sm text-amber-400">₱{unpaidOrdersTotal.toLocaleString()}</span>
+          </div>
         )}
         {activeToursTotal > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Tours & Experiences</span>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Tours & experiences (pending)</span>
             <span className="font-body text-sm text-foreground">₱{activeToursTotal.toLocaleString()}</span>
           </div>
         )}
         {activeRequestsTotal > 0 && (
-          <div className="flex justify-between mb-2">
-            <span className="font-body text-sm text-muted-foreground">Transport & Rentals</span>
+          <div className="flex justify-between mb-1">
+            <span className="font-body text-sm text-muted-foreground">Transport & rentals (pending)</span>
             <span className="font-body text-sm text-foreground">₱{activeRequestsTotal.toLocaleString()}</span>
           </div>
         )}
-        <div className="flex justify-between mb-2">
-          <span className="font-body text-sm text-muted-foreground">Total Payments</span>
-          <span className="font-body text-sm text-green-400">₱{totalPayments.toLocaleString()}</span>
+        <div className="border-t border-border pt-2 mt-2 flex justify-between">
+          <span className="font-body text-sm text-foreground font-medium">Total Charges</span>
+          <span className="font-body text-sm text-foreground font-medium">₱{totalCharges.toLocaleString()}</span>
         </div>
-        <div className="border-t border-border pt-2 flex justify-between">
-          <span className="font-body text-sm text-foreground font-medium">Balance</span>
-          <span className={`font-body text-sm font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
+        {serviceChargeTotal > 0 && (
+          <div className="flex justify-between mt-1">
+            <span className="font-body text-xs text-muted-foreground">of which Service Charge (10%)</span>
+            <span className="font-body text-xs text-muted-foreground">₱{serviceChargeTotal.toLocaleString()}</span>
+          </div>
+        )}
+        {totalCharges > 0 && (
+          <div className="flex justify-between">
+            <span className="font-body text-xs text-muted-foreground">of which VAT (12%, included)</span>
+            <span className="font-body text-xs text-muted-foreground">₱{vatIncluded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </div>
+        )}
+        <div className="flex justify-between mt-2">
+          <span className="font-body text-sm text-muted-foreground">Payments received</span>
+          <span className="font-body text-sm text-green-400">−₱{totalPayments.toLocaleString()}</span>
         </div>
+        <div className="border-t border-border pt-2 mt-2 flex justify-between">
+          <span className="font-body text-sm text-foreground font-medium">Balance Due</span>
+          <span className={`font-body text-base font-medium ${balance > 0 ? 'text-amber-400' : 'text-green-400'}`}>₱{balance.toLocaleString()}</span>
+        </div>
+        <p className="font-body text-[11px] text-muted-foreground mt-2">
+          All prices are VAT-inclusive (12% Philippine VAT). Service charge of 10% applies to food & drinks.
+        </p>
       </div>
+
 
       {/* Active F&B orders with itemized breakdown and status */}
       {unpaidOrders.length > 0 && (
