@@ -150,6 +150,8 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  /** A booking/order TALA proposed and is waiting for the guest to confirm. */
+  const [pendingAction, setPendingAction] = useState<{ tool: string; args: Record<string, unknown> } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
