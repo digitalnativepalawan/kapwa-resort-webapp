@@ -150,7 +150,16 @@ const StaffOrdersView = () => {
   });
 
   const [addCat, setAddCat] = useState('');
-  const activeCat = addCat || (menuCategories.length > 0 ? menuCategories[0].name : '');
+  // Only show categories that actually contain items, plus item categories
+  // that are missing from menu_categories config.
+  const itemCategoryNames = [...new Set(menuItems.map((i: any) => i.category).filter(Boolean))] as string[];
+  const usableCategories = [
+    ...menuCategories.filter((c: any) => itemCategoryNames.includes(c.name)),
+    ...itemCategoryNames
+      .filter(name => !menuCategories.some((c: any) => c.name === name))
+      .map((name, idx) => ({ id: name, name, sort_order: 1000 + idx })),
+  ];
+  const activeCat = addCat || (usableCategories.length > 0 ? usableCategories[0].name : '');
   const catItems = menuItems.filter((i: any) => i.category === activeCat);
 
   const addCartTotal = Object.values(addCart).reduce((s, c) => s + c.price * c.qty, 0);
