@@ -331,9 +331,18 @@ Deno.serve(async (req) => {
       brief = `${data.arrivals.expected} arrivals, ${data.departures.expected} departures, ${data.housekeeping.open} open housekeeping orders, ${data.requests.open} open guest requests, ${data.overdue_tasks.length} overdue tasks, and ₱${data.total_unpaid} unpaid across active stays. Review urgent requests, missing room-cleaning orders, departing balances and overdue work first.`;
     }
 
+    let deliveryError: string | null = null;
     if (delivery === "telegram") {
-      await sendTelegram(supabase, body.group ?? "managers", brief);
+      // Telegram is a side channel: if the bot token is missing or the send
+      // fails, still return the brief instead of 500-ing the whole loop.
+      try {
+        await sendTelegram(supabase, body.group ?? "managers", brief);
+      } catch (error) {
+        deliveryError = error instanceof Error ? error.message : String(error);
+        console.error("[ops-coordinator] telegram delivery failed", deliveryError);
+      }
     }
+
 
     return jsonResponse({
       ok: true,
