@@ -275,7 +275,7 @@ const StaffOrdersView = () => {
 
           {/* Category tabs */}
           <div className="flex flex-wrap gap-1 pb-2">
-            {menuCategories.map((cat: any) => (
+            {usableCategories.map((cat: any) => (
               <button
                 key={cat.id}
                 onClick={() => setAddCat(cat.name)}
