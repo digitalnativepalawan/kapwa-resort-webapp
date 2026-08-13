@@ -1926,6 +1926,16 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         </div>
       )}
 
+      {/* Guest payment (Stripe / GCash / QRPH) — unlocked after agreeing to the bill */}
+      <GuestPaymentSection
+        bookingId={session.booking_id || null}
+        roomId={session.room_id || null}
+        unitName={session.room_name}
+        guestName={session.guest_name}
+        balance={balance}
+        billAgreedAt={billAgreedAt || null}
+      />
+
       {/* Bill Agreement */}
       {(transactions.length > 0 || unpaidOrders.length > 0) && (
         <div className="border border-border rounded-lg p-4 space-y-3">
