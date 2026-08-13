@@ -1426,6 +1426,36 @@ export type Database = {
           },
         ]
       }
+      inventory: {
+        Row: {
+          category: string
+          id: string
+          item_name: string
+          min_stock: number | null
+          quantity: number
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          id?: string
+          item_name: string
+          min_stock?: number | null
+          quantity?: number
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          id?: string
+          item_name?: string
+          min_stock?: number | null
+          quantity?: number
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       inventory_logs: {
         Row: {
           change_qty: number
@@ -2628,6 +2658,33 @@ export type Database = {
           id?: string
           name?: string
           permissions?: string[]
+        }
+        Relationships: []
+      }
+      staff_schedule: {
+        Row: {
+          employee_name: string
+          id: string
+          role: string
+          shift_end: string | null
+          shift_start: string
+          status: string | null
+        }
+        Insert: {
+          employee_name: string
+          id?: string
+          role: string
+          shift_end?: string | null
+          shift_start: string
+          status?: string | null
+        }
+        Update: {
+          employee_name?: string
+          id?: string
+          role?: string
+          shift_end?: string | null
+          shift_start?: string
+          status?: string | null
         }
         Relationships: []
       }
