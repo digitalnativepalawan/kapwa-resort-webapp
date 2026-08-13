@@ -1525,21 +1525,39 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const guestIsOta = bookingData?.platform && otaPlatforms.includes(bookingData.platform.toLowerCase());
   // Filter out accommodation rows for OTA stays
   const visibleTransactions = guestIsOta ? transactions.filter((t: any) => t.transaction_type !== 'accommodation') : transactions;
-  const charges = visibleTransactions.filter((t: any) => (t.total_amount || 0) > 0);
-  const payments = visibleTransactions.filter((t: any) => (t.total_amount || 0) < 0);
-  const totalCharges = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
+  const VAT_RATE = 0.12;
+  const vatIn = (grossInclusive: number) => Math.round((grossInclusive - grossInclusive / (1 + VAT_RATE)) * 100) / 100;
+
+  // Orders already charged to the room folio also appear as ledger rows — never count them twice
+  const roomChargedOrderIds = new Set(roomChargedOrders.map((o: any) => o.id));
+  const ledgerRows = visibleTransactions.filter((t: any) => !(t.order_id && roomChargedOrderIds.has(t.order_id)));
+  const charges = ledgerRows.filter((t: any) => (t.total_amount || 0) > 0);
+  const payments = ledgerRows.filter((t: any) => (t.total_amount || 0) < 0);
+
+  const ledgerChargesTotal = charges.reduce((s: number, t: any) => s + (t.total_amount || 0), 0);
   const totalPayments = Math.abs(payments.reduce((s: number, t: any) => s + (t.total_amount || 0), 0));
-  const unpaidOrdersTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.total || 0) + (o.service_charge || 0), 0);
-  const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + (o.service_charge || 0), 0);
-  const unpaidOrdersSubtotal = unpaidOrdersTotal - unpaidOrdersSCTotal;
+
+  const unpaidOrdersSCTotal = unpaidOrders.reduce((s: number, o: any) => s + Number(o.service_charge || 0), 0);
+  const unpaidOrdersSubtotal = unpaidOrders.reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+  const unpaidOrdersTotal = unpaidOrdersSubtotal + unpaidOrdersSCTotal;
+
+  const roomChargedSCTotal = roomChargedOrders.reduce((s: number, o: any) => s + Number(o.service_charge || 0), 0);
+  const roomChargedSubtotal = roomChargedOrders.reduce((s: number, o: any) => s + Number(o.total || 0), 0);
+  const roomChargedTotal = roomChargedSubtotal + roomChargedSCTotal;
+
   // Completed tours/requests are now charged to the room ledger, so only count pending ones here
   const activeToursTotal = pendingTours.reduce((s: number, t: any) => s + Number(t.price || 0), 0);
   const activeRequestsTotal = pendingRequests.reduce((s: number, r: any) => s + Number(r.price || 0), 0);
-  const balance = totalCharges - totalPayments + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+
+  const totalCharges = ledgerChargesTotal + roomChargedTotal + unpaidOrdersTotal + activeToursTotal + activeRequestsTotal;
+  const vatIncluded = vatIn(totalCharges);
+  const serviceChargeTotal = unpaidOrdersSCTotal + roomChargedSCTotal;
+  const balance = totalCharges - totalPayments;
   const hasPending = pendingTours.length > 0 || pendingRequests.length > 0;
 
   // Separate room charges for clear display (accommodation already filtered for OTA)
   const roomCharges = charges.filter((t: any) => ['accommodation', 'room_charge', 'adjustment', 'charge'].includes(t.transaction_type));
+
 
   return (
     <div className="space-y-4">
