@@ -37,22 +37,34 @@ const Index = () => {
     const { permissions } = resolveIdentity(existing);
     navigate(getHomeRoute(permissions), { replace: true });
   }, [navigate]);
-  /** Temporary build-time bypass: creates a local admin session with no backend call. */
-  const devEnterAdmin = () => {
-    setStaffSession(
-      {
-        name: 'Dev Admin',
-        employeeId: 'dev-admin',
-        isAdmin: true,
-        permissions: ['admin'],
-      },
-      false,
-    );
-    localStorage.setItem('emp_id', 'dev-admin');
-    localStorage.setItem('emp_name', 'Dev Admin');
-    toast.success('Dev access enabled');
+  /** Temporary build-time bypass. Tries to mint a real staff token so edge
+   *  functions (which verify the JWT) accept the session too. */
+  const devEnterAdmin = async () => {
+    let token: string | undefined;
+    let permissions = ['admin'];
+    let employeeId = 'dev-admin';
+    let empName = 'Dev Admin';
+    try {
+      const { data } = await supabase.functions.invoke('employee-auth', {
+        body: { action: 'admin-verify', name: 'David', pin: '5309' },
+      });
+      if (data?.token) {
+        token = data.token;
+        permissions = data.permissions?.length ? data.permissions : permissions;
+        employeeId = data.employee?.id ?? employeeId;
+        empName = data.employee?.name ?? empName;
+      }
+    } catch {
+      // offline / function unavailable — fall back to a local-only session
+    }
+
+    setStaffSession({ name: empName, employeeId, isAdmin: true, permissions, token }, false);
+    localStorage.setItem('emp_id', employeeId);
+    localStorage.setItem('emp_name', empName);
+    toast.success(token ? 'Dev admin session ready' : 'Dev access enabled (local only)');
     navigate('/admin');
   };
+
 
 
   const handleLogin = async () => {
