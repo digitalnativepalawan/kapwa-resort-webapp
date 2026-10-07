@@ -484,7 +484,40 @@ export default function BotSettingsPage() {
           <section className="border border-border rounded-lg p-4 space-y-4 bg-card">
             <div className="flex items-center justify-between">
               <h2 className="font-display text-lg">OpenRouter (Cloud)</h2>
-              {openrouterLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+              <div className="flex items-center gap-2">
+                {openrouterLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setOpenrouterLoading(true);
+                    fetch('https://openrouter.ai/api/v1/models', {
+                      headers: {
+                        'HTTP-Referer': window.location.origin,
+                        'X-Title': 'KAPWA',
+                        ...(openrouterKey.trim() ? { Authorization: `Bearer ${openrouterKey.trim()}` } : {}),
+                      },
+                    })
+                      .then(r => r.json())
+                      .then(payload => {
+                        const models = (payload.data || []).map((m: any) => ({
+                          id: m.id,
+                          name: m.name || m.id,
+                          free: Number(m.pricing?.prompt || 0) === 0 && Number(m.pricing?.completion || 0) === 0,
+                          contextLength: m.context_length || null,
+                        })).sort((a: any, b: any) => Number(b.free) - Number(a.free) || a.name.localeCompare(b.name));
+                        if (models.length > 0) setOpenrouterModels(models);
+                        toast.success(`Loaded ${models.length} models`);
+                      })
+                      .catch(() => toast.error('Failed to fetch models'))
+                      .finally(() => setOpenrouterLoading(false));
+                  }}
+                  disabled={openrouterLoading}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${openrouterLoading ? 'animate-spin' : ''}`} />
+                  Refresh Models
+                </Button>
+              </div>
             </div>
 
             <label className="text-sm space-y-1">

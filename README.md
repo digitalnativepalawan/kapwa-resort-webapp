@@ -1,68 +1,113 @@
-# KAPWA Hospitality OS — Standalone Resort Operating System
+# KAPWA Hospitality OS
 
-KAPWA Hospitality OS is a standalone, full-stack hospitality operating system for boutique resorts (built for **BAIA Palawan**), powered by a **Node/Express backend**, **Neon PostgreSQL**, and a **React + Vite + TypeScript** frontend.
+An open-source, AI-powered resort management platform built for boutique properties in the Philippines, running on a standalone **Node/Express + Neon PostgreSQL + React/Vite** stack.
 
----
+## What is KAPWA?
 
-## Architecture Overview
+KAPWA is a full-stack resort operations system with:
 
-| Layer | Standalone Implementation |
+- **AI Resort Operator** — Autonomous agent that monitors operations across 9 domains, detects issues, and proposes/executes verified actions
+- **TALA Guest Concierge** — AI concierge for guest requests, dining orders, tours, and billing (text + LiveKit voice)
+- **Reception & Reservations** — Calendar view, booking management, Sirvoy & OTA webhook sync
+- **Housekeeping & Maintenance** — Task boards, inspection checklists, performance tracking
+- **F&B Operations** — Menu management, order taking, kitchen/bar display, tabs, inventory stock deduction, cashier
+- **Staff Management** — Scheduling, timesheets, payroll, PBKDF2 PIN + HS256 JWT authentication, role-based access control
+- **Guest Portal** — Self-service portal for guests to check bills, make requests, order food, and book tours
+- **Financial Reporting** — P&L reports, expense tracking with OpenRouter Vision OCR receipt scanning, accounting export
+
+## Tech Stack
+
+| Layer | Technology |
 |---|---|
-| **Database** | **Neon PostgreSQL** (`@neondatabase/serverless` & `pg`) via `server/db/adapter.js` + automatic embedded local JSON store fallback (`server/data/standalone-db.json`) for zero-config testing |
-| **Database Schema & RBAC** | `db/schema.sql` (73 tables, triggers, `decrement_stock` RPC) + `db/permissions.sql` (PostgreSQL session-claim helpers & `employees_public` view) |
-| **Authentication** | Independent PBKDF2 PIN + HS256 JWT staff authentication (`server/services/auth.js`) with brute-force rate limiting and `/api/auth/probe` |
-| **Permissions (RLS Replacement)** | Application-level & database-level RBAC (`server/middleware/permissions.js` + `db/permissions.sql`) protecting crown-jewel tables (`employees`, `employee_permissions`, `payroll_payments`, `employee_bonuses`, `audit_log`, `settings`) |
-| **File Storage** | Independent file storage service (`server/services/storage.js`) serving `receipts`, `logos`, and `guest-documents` buckets at `/api/storage/*` |
-| **Realtime** | Independent Server-Sent Events (SSE) realtime hub (`server/services/realtime.js`) at `/api/realtime` |
-| **Backend Services (24 Functions)** | Native Node/Express services (`server/services/functions.js`, `server/operator/*`, `server/services/guestTools.js`, `server/services/modelGateway.js`) |
-| **AI Model Gateway** | OpenRouter & local Ollama (`server/services/modelGateway.js`) |
+| **Frontend** | Vite + React 18 + TypeScript |
+| **UI** | shadcn/ui + Tailwind CSS |
+| **State** | Zustand + TanStack React Query |
+| **Database** | **Neon PostgreSQL** (`@neondatabase/serverless` & `pg`) + embedded local JSON store fallback |
+| **Backend API & Services** | **Node.js + Express** (`/api/db`, `/api/rpc`, `/api/functions`, `/api/auth`, `/api/storage`, `/api/realtime`) |
+| **Authentication & RBAC** | Independent PBKDF2-SHA256 PIN + HS256 JWT (`server/services/auth.js`) + Crown-Jewel RBAC (`server/middleware/permissions.js` & `db/permissions.sql`) |
+| **Realtime** | Server-Sent Events (SSE) (`server/services/realtime.js`) |
+| **Storage** | Independent file storage service (`server/services/storage.js`) for `receipts`, `logos`, `guest-documents` |
+| **AI / LLM** | OpenRouter & local Ollama (`server/services/modelGateway.js`) |
+| **Voice** | Python + LiveKit (`voice-agent/`) |
 
----
+## Project Structure
+
+```text
+kapwa-resort-webapp/
+├── db/                                 # Standalone Neon PostgreSQL database layer
+│   ├── schema.sql                      # Consolidated 73-table schema, enums, triggers & decrement_stock RPC
+│   ├── permissions.sql                 # PostgreSQL session-claim RBAC helpers & employees_public view
+│   └── migrate.js                      # Node migration runner (npm run db:migrate)
+├── server/                             # Standalone Node.js + Express backend (Port 3000)
+│   ├── index.js                        # Main Express API server (/api/db, /api/rpc, /api/functions, /api/storage, /api/realtime)
+│   ├── db/
+│   │   └── adapter.js                  # Dual-mode Neon PostgreSQL pool + embedded relational store adapter
+│   ├── middleware/
+│   │   └── permissions.js              # Crown-Jewel RBAC enforcement & sensitive column sanitization
+│   ├── operator/                       # Autonomous Resort Operator loop (Node runtime)
+│   │   ├── system-map.js               # Domains, tables, tools & approval boundaries
+│   │   ├── state.js                    # Unified resort state loader
+│   │   ├── planner.js                  # Deterministic 9-domain operational planner
+│   │   ├── executor.js                 # Case executor & database verifier
+│   │   ├── cases.js                    # Case lifecycle & history helpers
+│   │   └── brain.js                    # LLM case triage & manager Q&A
+│   ├── services/
+│   │   ├── auth.js                     # Independent PBKDF2 PIN + HS256 JWT staff authentication & rate limiter
+│   │   ├── functions.js                # Native Node handlers for all 24 operational/webhook/AI functions
+│   │   ├── guestTools.js               # 20+ live resort tools for TALA Guest Concierge
+│   │   ├── modelGateway.js             # Unified OpenRouter & Ollama model gateway
+│   │   ├── realtime.js                 # Server-Sent Events (SSE) postgres_changes broadcast hub
+│   │   └── storage.js                  # Local/volume bucket storage (receipts, logos, guest-documents)
+│   ├── agent/
+│   │   └── resort-operator.js          # Scheduled cron operator brief & action runner
+│   └── lib/
+│       └── model-runtime.js            # Encrypted agent settings model runtime
+├── src/                                # React + TypeScript frontend (Port 8080)
+│   ├── pages/                          # 25 route pages (Index, AdminPage, ReceptionPage, GuestPortal, ResortOperatorPage, etc.)
+│   ├── components/                     # UI components organized by domain
+│   │   ├── admin/                      # Admin dashboard, payroll, accounting, menu, inventory, RBAC diagnostics
+│   │   ├── reception/                  # Room calendar, check-in/out, Sirvoy sync
+│   │   ├── rooms/                      # Room billing, folios, settlements, audit logs
+│   │   ├── service/                    # Kitchen, bar, cashier, orders, tours, housekeeping, manager view
+│   │   ├── employee/                   # Staff tasks, schedules, shift clock-in/out, bonuses
+│   │   ├── guest/                      # Guest portal & TALA AI concierge chat
+│   │   └── ui/                         # shadcn/ui primitives
+│   ├── hooks/                          # React Query & realtime subscription hooks
+│   ├── lib/
+│   │   ├── kapwaClient.ts              # Standalone browser client (DB query builder, RPC, Functions, Storage, SSE Realtime)
+│   │   ├── staffAuth.ts                # Client-side JWT claim decoder & /api/auth/probe verifier
+│   │   ├── edgeFunctions.ts            # Authoritative registry of all 24 backend functions
+│   │   └── standaloneKapwa.test.ts     # Vitest suite for Operator Loop, Auth, and RBAC
+│   └── integrations/supabase/
+│       ├── client.ts                   # Compatibility alias exporting kapwaClient
+│       └── types.ts                    # Database TypeScript definitions
+├── voice-agent/                        # Python LiveKit voice agent (TALA Voice)
+│   ├── agent/
+│   │   ├── main.py                     # LiveKit voice worker entrypoint
+│   │   ├── config.py                   # Environment settings (KAPWA_API_URL / DATABASE_URL)
+│   │   ├── supabase_client.py          # Standalone KAPWA REST / Neon query client
+│   │   ├── memory/                     # Guest profile & conversation memory
+│   │   └── tools/                      # Voice tools for rooms, dining, tours, and requests
+│   └── docker-compose.yml              # LiveKit voice agent container config
+├── docs/                               # Architecture, security gates & operations documentation
+├── NEON_SETUP.md                       # Step-by-step Neon PostgreSQL setup & migration guide
+└── SECURITY_GATE.md                    # Security verification checklist
+```
 
 ## Quick Start
 
-### 1. Install Dependencies
-
 ```sh
+# 1. Install dependencies
 npm install
-```
 
-### 2. Configure Environment (`.env`)
-
-Copy `.env.example` to `.env`:
-
-```sh
+# 2. Configure environment
 cp .env.example .env
-```
+# Set DATABASE_URL in .env for Neon PostgreSQL (or leave blank to use the embedded local store)
 
-- **With Neon PostgreSQL**: Set `DATABASE_URL="postgresql://..."` in `.env` and run migrations:
-  ```sh
-  npm run db:migrate
-  ```
-- **Local Zero-Config Testing**: Leave `DATABASE_URL` blank to use the built-in embedded relational store (`server/data/standalone-db.json`), pre-seeded with resort profile, rooms, menu, tours, and default staff accounts (`David` / PIN `5309`, `Maria` / PIN `1234`).
+# 3. Apply database schema to Neon PostgreSQL (when DATABASE_URL is set)
+npm run db:migrate
 
-### 3. Start Backend & Frontend
-
-Run the KAPWA OS backend (`http://0.0.0.0:3000`) and Vite frontend (`http://0.0.0.0:8080`):
-
-```sh
-# Terminal 1: Start KAPWA OS Backend Server
+# 4. Start the backend server (port 3000) and frontend dev server (port 8080)
 npm run server
-
-# Terminal 2: Start KAPWA OS Web App
 npm run dev
 ```
-
----
-
-## Testing & Verification
-
-```sh
-# Run unit & operator loop tests
-npm test
-
-# Run production build check
-npm run build
-```
-
-See [NEON_SETUP.md](./NEON_SETUP.md) for detailed Neon PostgreSQL provisioning and migration instructions.
