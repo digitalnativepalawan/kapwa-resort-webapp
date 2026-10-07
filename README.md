@@ -1,75 +1,68 @@
-# Welcome to KAPWA Hospitality OS
+# KAPWA Hospitality OS — Standalone Resort Operating System
 
-## Project info
+KAPWA Hospitality OS is a standalone, full-stack hospitality operating system for boutique resorts (built for **BAIA Palawan**), powered by a **Node/Express backend**, **Neon PostgreSQL**, and a **React + Vite + TypeScript** frontend.
 
-**URL**: https://github.com/digitalnativepalawan/kapwa-resort-webapp
+---
 
-## Resort Operator
+## Architecture Overview
 
-The agentic resort-operations implementation is documented in:
+| Layer | Standalone Implementation |
+|---|---|
+| **Database** | **Neon PostgreSQL** (`@neondatabase/serverless` & `pg`) via `server/db/adapter.js` + automatic embedded local JSON store fallback (`server/data/standalone-db.json`) for zero-config testing |
+| **Database Schema & RBAC** | `db/schema.sql` (73 tables, triggers, `decrement_stock` RPC) + `db/permissions.sql` (PostgreSQL session-claim helpers & `employees_public` view) |
+| **Authentication** | Independent PBKDF2 PIN + HS256 JWT staff authentication (`server/services/auth.js`) with brute-force rate limiting and `/api/auth/probe` |
+| **Permissions (RLS Replacement)** | Application-level & database-level RBAC (`server/middleware/permissions.js` + `db/permissions.sql`) protecting crown-jewel tables (`employees`, `employee_permissions`, `payroll_payments`, `employee_bonuses`, `audit_log`, `settings`) |
+| **File Storage** | Independent file storage service (`server/services/storage.js`) serving `receipts`, `logos`, and `guest-documents` buckets at `/api/storage/*` |
+| **Realtime** | Independent Server-Sent Events (SSE) realtime hub (`server/services/realtime.js`) at `/api/realtime` |
+| **Backend Services (24 Functions)** | Native Node/Express services (`server/services/functions.js`, `server/operator/*`, `server/services/guestTools.js`, `server/services/modelGateway.js`) |
+| **AI Model Gateway** | OpenRouter & local Ollama (`server/services/modelGateway.js`) |
 
-```text
-docs/RESORT_OPERATOR_SETUP.md
-```
+---
 
-## How can I edit this code?
+## Quick Start
 
-There are several ways of editing your application.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in upstream tooling.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### 1. Install Dependencies
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 2. Configure Environment (`.env`)
 
-# Step 3: Install the necessary dependencies.
-npm i
+Copy `.env.example` to `.env`:
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```sh
+cp .env.example .env
+```
+
+- **With Neon PostgreSQL**: Set `DATABASE_URL="postgresql://..."` in `.env` and run migrations:
+  ```sh
+  npm run db:migrate
+  ```
+- **Local Zero-Config Testing**: Leave `DATABASE_URL` blank to use the built-in embedded relational store (`server/data/standalone-db.json`), pre-seeded with resort profile, rooms, menu, tours, and default staff accounts (`David` / PIN `5309`, `Maria` / PIN `1234`).
+
+### 3. Start Backend & Frontend
+
+Run the KAPWA OS backend (`http://0.0.0.0:3000`) and Vite frontend (`http://0.0.0.0:8080`):
+
+```sh
+# Terminal 1: Start KAPWA OS Backend Server
+npm run server
+
+# Terminal 2: Start KAPWA OS Web App
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click on the "Edit" button (pencil icon) at the top right.
-- Make your changes and commit the changes.
+## Testing & Verification
 
-**Use GitHub Codespaces**
+```sh
+# Run unit & operator loop tests
+npm test
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+# Run production build check
+npm run build
+```
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Open the project in your deployment environment and publish via its deployment workflow.
-
-## Can I connect a custom domain to my project?
-
-Yes, you can!
-
-To connect a custom domain, follow your deployment provider's custom-domain setup flow.
-
-Read more here: https://docs.lovable.dev/features/custom-domain#custom-domain
+See [NEON_SETUP.md](./NEON_SETUP.md) for detailed Neon PostgreSQL provisioning and migration instructions.

@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { RefreshCw, Send, CheckCircle, XCircle, AlertTriangle, Zap, Trash2 } from 'lucide-react';
+import { getKapwaApiBase } from '@/lib/kapwaClient';
 
-const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/integration-webhook`;
-const PROCESS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-webhook-queue`;
+const WEBHOOK_URL = `${getKapwaApiBase()}/api/functions/integration-webhook`;
+const PROCESS_URL = `${getKapwaApiBase()}/api/functions/process-webhook-queue`;
 
 const IntegrationReadinessDashboard = () => {
   const qc = useQueryClient();

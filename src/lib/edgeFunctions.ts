@@ -56,6 +56,8 @@ export const EDGE_FUNCTIONS: EdgeFunctionSpec[] = [
     note: 'Guest-request routing loop. Invoked by resort-agent-loop with the internal secret.' },
   { name: 'guest-requests-api', class: 'internal', called: false,
     note: 'Orphaned. INTERNAL_FN_SECRET.' },
+  { name: 'guest-whatsapp', class: 'internal', called: false,
+    note: 'Outbound WhatsApp bridge invoked by resort-operator with INTERNAL_FN_SECRET.' },
   { name: 'reservations-ai', class: 'internal', called: false,
     note: 'Booking-issue detection. Invoked by resort-agent-loop with the internal secret.' },
 

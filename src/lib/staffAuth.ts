@@ -1,49 +1,21 @@
+import type { StaffSession } from '@/lib/session';
+
 /**
- * Staff identity resolution.
+ * Staff authentication mode.
  *
- * Two problems this module exists to solve:
- *
- * 1. **The session blob was the source of truth.** `RequireAuth` and
- *    `usePermissions` read `permissions` / `isAdmin` straight out of the
- *    localStorage object written at login. Anyone could open devtools, add
- *    `"admin"` to that array, and the entire back office would open up. When a
- *    staff JWT is present its claims are server-signed, so they — not the
- *    surrounding blob — decide what the UI grants.
- *
- * 2. **`VITE_USE_STAFF_JWT` could not be flipped safely.** Turning it on sends
- *    the staff JWT to PostgREST. If `STAFF_JWT_SECRET` does not exactly equal
- *    the project's JWT secret, PostgREST rejects *every* request with 401 and
- *    the whole app goes dark. That is unverifiable from a code review, which is
- *    why the flag sat at "false" while RLS was already tightened — the exact
- *    combination that makes staff screens render empty.
- *
- *    So the flag now accepts a third value, `"auto"` (the default): attach the
- *    staff JWT only once we have *observed* PostgREST accept it. One cheap
- *    probe at login decides. If the secret is right, claim-based RLS works. If
- *    it is wrong, behaviour is identical to today and the reason is reported
- *    instead of showing empty tables.
+ * - "false": compatibility mode. Token is requested and stored, but never sent
+ *   on database requests.
+ * - "auto" (default): probe `/api/auth/probe` once with the minted token;
+ *   attach it only if the server accepts the signature.
+ * - "true": hard cutover. Always attach the token; refuse sessions without one.
  */
-
-import type { StaffSession } from './session';
-
-export type StaffJwtMode = 'true' | 'false' | 'auto';
-
-/** Result of probing whether PostgREST accepts our staff JWT. */
-export type StaffJwtStatus =
-  | 'disabled'   // flag is "false"
-  | 'no-token'   // signed in, but employee-auth issued no token (secret unset)
-  | 'unverified' // token present, probe has not run yet
-  | 'active'     // PostgREST accepted the token — claim-based RLS is live
-  | 'rejected';  // PostgREST returned 401 — STAFF_JWT_SECRET does not match
-
-const PROBE_KEY = 'staff_jwt_probe';
-
-export const STAFF_JWT_MODE: StaffJwtMode = (() => {
-  const raw = String(import.meta.env.VITE_USE_STAFF_JWT ?? 'auto').toLowerCase().trim();
-  return raw === 'true' || raw === 'false' ? raw : 'auto';
+export const STAFF_JWT_MODE: 'false' | 'auto' | 'true' = (() => {
+  const raw = String(import.meta.env.VITE_ENFORCE_STAFF_JWT ?? 'auto').toLowerCase();
+  if (raw === 'true' || raw === 'false') return raw;
+  return 'auto';
 })();
 
-export interface StaffClaims {
+export interface StaffJwtClaims {
   employee_id: string;
   name: string;
   permissions: string[];
@@ -52,158 +24,109 @@ export interface StaffClaims {
 }
 
 /**
- * Decode a staff JWT payload.
- *
- * This is *not* verification — the browser cannot verify an HS256 signature
- * without the secret, and must not try. The server re-verifies on every edge
- * function call and PostgREST re-verifies on every table read. Decoding here
- * only decides what the UI draws, and it is still strictly better than the
- * surrounding session blob: the claims came back from `employee-auth` inside a
- * signed token, so tampering with them invalidates the signature and the
- * server rejects the request that follows.
+ * Decode the payload of a staff JWT for client-side routing/UI decisions.
+ * Cryptographic verification always happens on the KAPWA server.
  */
-export function decodeStaffClaims(token: string | undefined | null): StaffClaims | null {
+export function decodeStaffClaims(token?: string | null): StaffJwtClaims | null {
   if (!token) return null;
   try {
-    const payload = token.split('.')[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
-      .padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=');
-    const claims = JSON.parse(atob(normalized));
-
-    if (typeof claims?.exp !== 'number' || claims.exp * 1000 <= Date.now()) return null;
-    if (!claims?.employee_id) return null;
-
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const padded = parts[1]
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .padEnd(parts[1].length + ((4 - (parts[1].length % 4)) % 4), '=');
+    const payload = JSON.parse(atob(padded));
+    if (typeof payload?.exp === 'number' && payload.exp * 1000 <= Date.now()) {
+      return null;
+    }
+    if (!payload?.employee_id) return null;
     return {
-      employee_id: String(claims.employee_id),
-      name: String(claims.name ?? ''),
-      permissions: Array.isArray(claims.permissions) ? claims.permissions.map(String) : [],
-      is_admin: claims.is_admin === true,
-      exp: claims.exp,
+      employee_id: String(payload.employee_id),
+      name: String(payload.name ?? ''),
+      permissions: Array.isArray(payload.permissions) ? payload.permissions.map(String) : [],
+      is_admin: payload.is_admin === true || (Array.isArray(payload.permissions) && payload.permissions.includes('admin')),
+      exp: Number(payload.exp ?? 0),
     };
   } catch {
     return null;
   }
 }
 
-export interface ResolvedIdentity {
+/**
+ * Resolve the effective permissions and admin flag for a session.
+ * When a non-expired token is present, its claims win over the mutable
+ * localStorage fields (`session.permissions` / `session.isAdmin`).
+ */
+export function resolveIdentity(session: StaffSession | null): {
   permissions: string[];
   isAdmin: boolean;
-  /** True when the values came from signed claims rather than the local blob. */
   serverVerified: boolean;
-}
-
-/**
- * The permissions the UI should act on.
- *
- * Prefers signed claims. Falls back to the session blob only when no token was
- * issued at all (STAFF_JWT_SECRET unset server-side), which is the pre-cutover
- * state this codebase still has to run in.
- */
-export function resolveIdentity(session: StaffSession | null): ResolvedIdentity {
+} {
   if (!session) return { permissions: [], isAdmin: false, serverVerified: false };
-
   const claims = decodeStaffClaims(session.token);
   if (claims) {
     return {
       permissions: claims.permissions,
-      isAdmin: claims.is_admin || claims.permissions.includes('admin'),
+      isAdmin: claims.is_admin,
       serverVerified: true,
     };
   }
-
   const permissions = session.permissions ?? [];
   return {
     permissions,
-    isAdmin: session.isAdmin === true || permissions.includes('admin'),
+    isAdmin: Boolean(session.isAdmin || permissions.includes('admin')),
     serverVerified: false,
   };
 }
 
-// ── PostgREST acceptance probe ───────────────────────────────────────────────
+const PROBE_CACHE_PREFIX = 'staff_jwt_probe:';
 
-function probeCacheKey(token: string): string {
-  // Key on the signature so a re-issued token forces a fresh probe.
-  return `${PROBE_KEY}:${token.slice(-16)}`;
+function probeKey(token: string): string {
+  return PROBE_CACHE_PREFIX + token.slice(-16);
 }
 
-function readProbe(token: string): boolean | null {
+/** Synchronous check used inside the request interceptor. */
+export function shouldAttachStaffJwt(token: string | null): boolean {
+  if (!token || STAFF_JWT_MODE === 'false') return false;
+  if (STAFF_JWT_MODE === 'true') return true;
   try {
-    const cached = sessionStorage.getItem(probeCacheKey(token));
-    if (cached === '1') return true;
-    if (cached === '0') return false;
-  } catch { /* storage unavailable */ }
-  return null;
-}
-
-function writeProbe(token: string, accepted: boolean): void {
-  try {
-    sessionStorage.setItem(probeCacheKey(token), accepted ? '1' : '0');
-  } catch { /* storage unavailable */ }
-}
-
-/**
- * Ask PostgREST whether it accepts this staff JWT.
- *
- * A 401 means the signature or algorithm is wrong — almost always that
- * STAFF_JWT_SECRET is not the project's JWT secret, or the project has migrated
- * to asymmetric signing keys while employee-auth still signs HS256.
- *
- * Any other status (including 403 / 406 from RLS) means the token was accepted
- * as an identity, which is what we are testing for.
- */
-export async function probeStaffJwt(token: string): Promise<boolean> {
-  const cached = readProbe(token);
-  if (cached !== null) return cached;
-
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return false;
-
-  try {
-    const response = await fetch(`${url}/rest/v1/employees?select=id&limit=1`, {
-      headers: { apikey: key, Authorization: `Bearer ${token}` },
-    });
-    const accepted = response.status !== 401;
-    writeProbe(token, accepted);
-    return accepted;
+    return sessionStorage.getItem(probeKey(token)) === '1';
   } catch {
-    // Network failure tells us nothing about the token — do not cache it.
     return false;
   }
 }
 
 /**
- * Whether the Supabase client should attach the staff JWT to PostgREST
- * requests. Must stay synchronous: it runs inside the client's fetch wrapper.
+ * Ask the KAPWA backend once whether it accepts this token's signature.
+ * Caches the answer in sessionStorage so `shouldAttachStaffJwt` stays synchronous.
  */
-export function shouldAttachStaffJwt(token: string | null): boolean {
-  if (!token) return false;
-  if (STAFF_JWT_MODE === 'false') return false;
-  if (STAFF_JWT_MODE === 'true') return true;
-  return readProbe(token) === true;
-}
+export async function probeStaffJwt(token: string): Promise<boolean> {
+  if (!token || STAFF_JWT_MODE === 'false') return false;
+  try {
+    const cached = sessionStorage.getItem(probeKey(token));
+    if (cached === '1') return true;
+    if (cached === '0') return false;
+  } catch {
+    // sessionStorage unavailable
+  }
 
-/** Current state of staff-JWT propagation, for diagnostics in Admin. */
-export function getStaffJwtStatus(session: StaffSession | null): StaffJwtStatus {
-  if (STAFF_JWT_MODE === 'false') return 'disabled';
-  const token = session?.token;
-  if (!token) return 'no-token';
-  const probe = readProbe(token);
-  if (probe === true) return 'active';
-  if (probe === false) return 'rejected';
-  return STAFF_JWT_MODE === 'true' ? 'active' : 'unverified';
+  const apiBase = (import.meta.env.VITE_KAPWA_API_URL || '').replace(/\/$/, '');
+  try {
+    const res = await fetch(`${apiBase}/api/auth/probe`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const accepted = res.status < 400;
+    try {
+      sessionStorage.setItem(probeKey(token), accepted ? '1' : '0');
+    } catch {
+      // ignore storage errors
+    }
+    return accepted;
+  } catch {
+    return false;
+  }
 }
-
-export const STAFF_JWT_STATUS_DETAIL: Record<StaffJwtStatus, string> = {
-  disabled:
-    'VITE_USE_STAFF_JWT is "false". Staff database requests run as the anonymous role, so any table with claim-based RLS will read as empty.',
-  'no-token':
-    'Sign-in succeeded but employee-auth issued no token, which means STAFF_JWT_SECRET is not set on the function. Staff database requests run as the anonymous role.',
-  unverified:
-    'A staff token exists but has not been checked against the database yet.',
-  active:
-    'PostgREST accepts the staff token. Claim-based RLS policies are being enforced with this employee\'s permissions.',
-  rejected:
-    'PostgREST rejected the staff token (401). STAFF_JWT_SECRET does not match the project JWT secret, or the project uses asymmetric signing keys while employee-auth signs HS256. Falling back to the anonymous role.',
-};

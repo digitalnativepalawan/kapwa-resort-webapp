@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireStaff } from "../_shared/auth.ts";
+import { resolveModelConfig } from "../_shared/modelGateway.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,14 +14,19 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Staff-only endpoint. The gateway cannot verify the opaque publishable key,
-  // so authorization happens here. Inert until STAFF_JWT_SECRET is configured.
   const auth = await requireStaff(req);
   if (!auth.ok) return auth.response;
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    );
+    const modelConfig = await resolveModelConfig(supabase, "operator");
+    const OPENROUTER_API_KEY = modelConfig.apiKey || Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY is not configured in Admin → Agent Settings or environment");
+    }
 
     const { image_base64 } = await req.json();
     if (!image_base64) {
@@ -60,16 +67,20 @@ Rules:
 - If a field cannot be determined, use null
 - Return ONLY the JSON object, nothing else`;
 
+    const visionModel = Deno.env.get("OCR_VISION_MODEL") || "google/gemini-2.5-flash";
+
     const response = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://openrouter.ai/api/v1/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
+          "HTTP-Referer": Deno.env.get("APP_URL") ?? "https://kapwa.local",
+          "X-Title": "KAPWA Hospitality OS",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: visionModel,
           messages: [
             { role: "system", content: systemPrompt },
             {
@@ -104,7 +115,7 @@ Rules:
         );
       }
       const errText = await response.text();
-      console.error("AI gateway error:", response.status, errText);
+      console.error("OpenRouter vision error:", response.status, errText);
       return new Response(
         JSON.stringify({ error: "AI processing failed" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -114,7 +125,6 @@ Rules:
     const aiData = await response.json();
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
-    // Parse the JSON from the AI response (strip markdown fences if present)
     let cleaned = rawContent.trim();
     if (cleaned.startsWith("```")) {
       cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");

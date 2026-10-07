@@ -1,17 +1,18 @@
-"""
-Central config for the TALA voice agent.
-All values come from environment variables — see .env.example.
-"""
+"""TALA agent configuration loaded from environment variables."""
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
-def _env(key: str, default: str | None = None, required: bool = False) -> str:
-    val = os.environ.get(key, default)
-    if required and not val:
-        raise RuntimeError(f"Missing required env var: {key}")
-    return val or ""
+def _require(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -21,52 +22,40 @@ class Settings:
     livekit_api_key: str
     livekit_api_secret: str
 
-    # Ollama (LLM)
-    ollama_base_url: str
-    ollama_model: str
+    # Providers
+    deepgram_api_key: str
+    openai_api_key: str
+    openai_model: str
+    elevenlabs_api_key: str
+    elevenlabs_voice_id: str
+    elevenlabs_model: str
 
-    # Whisper STT (whisper.cpp server, OpenAI-compatible HTTP API)
-    whisper_base_url: str
+    # KAPWA Backend / Neon PostgreSQL
+    kapwa_api_url: str
+    internal_fn_secret: str
+    database_url: str
 
-    # Kokoro TTS (Kokoro-FastAPI, OpenAI-compatible HTTP API)
-    kokoro_base_url: str
-    kokoro_voice: str
-
-    # Supabase
-    supabase_url: str
-    supabase_service_role_key: str
-
-    # Weather
-    weather_api_key: str  # OpenWeatherMap free tier key; San Vicente, Palawan coords hardcoded in tool
-    resort_lat: float
-    resort_lon: float
-
-    # Loop tuning
-    max_retries: int
-    tool_timeout_seconds: float
+    # Resort context
+    resort_name: str
+    resort_timezone: str
+    log_level: str
 
 
 def load_settings() -> Settings:
     return Settings(
-        livekit_url=_env("LIVEKIT_URL", "ws://localhost:7880"),
-        livekit_api_key=_env("LIVEKIT_API_KEY", required=True),
-        livekit_api_secret=_env("LIVEKIT_API_SECRET", required=True),
-
-        ollama_base_url=_env("OLLAMA_BASE_URL", "http://localhost:11434"),
-        ollama_model=_env("OLLAMA_MODEL", "qwen3:8b"),
-
-        whisper_base_url=_env("WHISPER_BASE_URL", "http://localhost:9000"),
-
-        kokoro_base_url=_env("KOKORO_BASE_URL", "http://localhost:8880"),
-        kokoro_voice=_env("KOKORO_VOICE", "af_bella"),
-
-        supabase_url=_env("SUPABASE_URL", required=True),
-        supabase_service_role_key=_env("SUPABASE_SERVICE_ROLE_KEY", required=True),
-
-        weather_api_key=_env("WEATHER_API_KEY", ""),
-        resort_lat=float(_env("RESORT_LAT", "10.5333")),   # San Vicente, Palawan
-        resort_lon=float(_env("RESORT_LON", "119.2500")),
-
-        max_retries=int(_env("MAX_RETRIES", "3")),
-        tool_timeout_seconds=float(_env("TOOL_TIMEOUT_SECONDS", "8.0")),
+        livekit_url=_require("LIVEKIT_URL"),
+        livekit_api_key=_require("LIVEKIT_API_KEY"),
+        livekit_api_secret=_require("LIVEKIT_API_SECRET"),
+        deepgram_api_key=_require("DEEPGRAM_API_KEY"),
+        openai_api_key=_require("OPENAI_API_KEY"),
+        openai_model=os.getenv("OPENAI_MODEL", "gpt-4o").strip(),
+        elevenlabs_api_key=_require("ELEVENLABS_API_KEY"),
+        elevenlabs_voice_id=_require("ELEVENLABS_VOICE_ID"),
+        elevenlabs_model=os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5").strip(),
+        kapwa_api_url=os.getenv("KAPWA_API_URL", "http://127.0.0.1:3000").strip(),
+        internal_fn_secret=os.getenv("INTERNAL_FN_SECRET", "kapwa-internal-fn-secret-dev").strip(),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
+        resort_name=os.getenv("RESORT_NAME", "BAIA Palawan").strip(),
+        resort_timezone=os.getenv("RESORT_TIMEZONE", "Asia/Manila").strip(),
+        log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
     )

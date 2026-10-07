@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Wifi, WifiOff, Copy, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { getKapwaApiBase } from '@/lib/kapwaClient';
 
-const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/sirvoy-webhook`;
+const WEBHOOK_URL = `${getKapwaApiBase()}/api/functions/sirvoy-webhook`;
 
 const WebhookSettings = () => {
   const [testing, setTesting] = useState(false);

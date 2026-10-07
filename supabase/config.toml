@@ -75,6 +75,9 @@ verify_jwt = false
 [functions.guest-search]
 verify_jwt = false
 
+[functions.guest-whatsapp]
+verify_jwt = false
+
 [functions.housekeeping]
 verify_jwt = false
 

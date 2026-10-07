@@ -10,13 +10,17 @@ import {
   Search, RefreshCw, Users, LogIn, LogOut, BedDouble, AlertTriangle,
   TrendingUp, Calendar, DollarSign,
 } from 'lucide-react';
+import { getKapwaApiBase } from '@/lib/kapwaClient';
+import { getStaffToken } from '@/lib/session';
 
-const BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
-const AUTH = `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`;
+const BASE = `${getKapwaApiBase()}/api/functions`;
 
 const apiFetch = async (path: string) => {
+  const token = getStaffToken();
   const res = await fetch(`${BASE}${path}`, {
-    headers: { Authorization: AUTH },
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
   if (!res.ok) throw new Error(`API ${res.status}: ${res.statusText}`);
   return res.json();
