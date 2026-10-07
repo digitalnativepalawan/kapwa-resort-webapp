@@ -36,6 +36,59 @@ const RELATIONS = {
     menu_items: { targetTable: 'menu_items', localKey: 'menu_item_id', targetKey: 'id' },
     ingredients: { targetTable: 'ingredients', localKey: 'ingredient_id', targetKey: 'id' },
   },
+  inventory_logs: {
+    ingredients: { targetTable: 'ingredients', localKey: 'ingredient_id', targetKey: 'id' },
+  },
+  units: {
+    room_types: { targetTable: 'room_types', localKey: 'room_type_id', targetKey: 'id' },
+  },
+  room_transactions: {
+    units: { targetTable: 'units', localKey: 'unit_id', targetKey: 'id' },
+    resort_ops_bookings: { targetTable: 'resort_ops_bookings', localKey: 'booking_id', targetKey: 'id' },
+  },
+  employee_permissions: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  employee_tasks: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  employee_shifts: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  employee_bonuses: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  payroll_payments: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  weekly_schedules: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  time_entries: {
+    employees: { targetTable: 'employees', localKey: 'employee_id', targetKey: 'id' },
+  },
+  cleaning_package_items: {
+    cleaning_packages: { targetTable: 'cleaning_packages', localKey: 'package_id', targetKey: 'id' },
+    ingredients: { targetTable: 'ingredients', localKey: 'ingredient_id', targetKey: 'id' },
+  },
+  housekeeping_checklists: {
+    cleaning_packages: { targetTable: 'cleaning_packages', localKey: 'package_id', targetKey: 'id' },
+  },
+  guest_documents: {
+    resort_ops_guests: { targetTable: 'resort_ops_guests', localKey: 'guest_id', targetKey: 'id' },
+    resort_ops_bookings: { targetTable: 'resort_ops_bookings', localKey: 'booking_id', targetKey: 'id' },
+  },
+  guest_notes: {
+    resort_ops_guests: { targetTable: 'resort_ops_guests', localKey: 'guest_id', targetKey: 'id' },
+    resort_ops_bookings: { targetTable: 'resort_ops_bookings', localKey: 'booking_id', targetKey: 'id' },
+  },
+  guest_payment_submissions: {
+    resort_ops_bookings: { targetTable: 'resort_ops_bookings', localKey: 'booking_id', targetKey: 'id' },
+    units: { targetTable: 'units', localKey: 'unit_id', targetKey: 'id' },
+  },
+  task_comments: {
+    employee_tasks: { targetTable: 'employee_tasks', localKey: 'task_id', targetKey: 'id' },
+  },
 };
 
 /**
@@ -363,6 +416,12 @@ function createSeedStore() {
     guest_payment_submissions: [],
     task_comments: [],
     room_types: [],
+    historical_revenue: [],
+    guest_memory: [],
+    tala_conversations: [],
+    inventory: [],
+    staff_schedule: [],
+    kapwa_tenants: [],
   };
 }
 
@@ -581,15 +640,15 @@ function projectColumns(rows, parsedSelect) {
 }
 
 // ── SQL Builder for Neon PostgreSQL ─────────────────────────────────────────
-function buildWhereClause(filters = [], startParamIdx = 1) {
+export function buildWhereClause(filters = [], startParamIdx = 1) {
   const clauses = [];
   const values = [];
   let idx = startParamIdx;
 
   for (const f of filters) {
-    const { op, column, value, operator } = f;
+    const { op, column, value, operator, expr } = f;
     if (op === 'or') {
-      const orParts = String(value || '').split(',').map((c) => c.trim()).filter(Boolean);
+      const orParts = String(expr || value || '').split(',').map((c) => c.trim()).filter(Boolean);
       const subClauses = [];
       for (const part of orParts) {
         const segs = part.split('.');
@@ -1099,7 +1158,7 @@ export async function executeRpc(fnName, args = {}) {
 /**
  * Create a chainable server-side query builder compatible with `.from(table)...`
  * so all backend services & agents can query Neon PostgreSQL / Embedded Store
- * with a clean, familiar API and zero Supabase dependency.
+ * with a clean, familiar API and zero KAPWA dependency.
  */
 export function createInternalClient({ invokeFunction, onMutation } = {}) {
   function from(table) {

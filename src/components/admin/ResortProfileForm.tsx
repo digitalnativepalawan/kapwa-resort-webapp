@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -66,9 +66,9 @@ const ResortProfileForm = () => {
     try {
       const ext = file.name.split('.').pop();
       const path = `logo-${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('logos').upload(path, file, { upsert: true });
+      const { error } = await kapwaClient.storage.from('logos').upload(path, file, { upsert: true });
       if (error) throw error;
-      const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path);
+      const { data: urlData } = kapwaClient.storage.from('logos').getPublicUrl(path);
       setForm(f => ({ ...f, logo_url: urlData.publicUrl }));
       toast.success('Logo uploaded');
     } catch {
@@ -82,10 +82,10 @@ const ResortProfileForm = () => {
     setSaving(true);
     try {
       if (profile?.id) {
-        const { error } = await supabase.from('resort_profile').update(form).eq('id', profile.id);
+        const { error } = await kapwaClient.from('resort_profile').update(form).eq('id', profile.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('resort_profile').insert(form);
+        const { error } = await kapwaClient.from('resort_profile').insert(form);
         if (error) throw error;
       }
       qc.invalidateQueries({ queryKey: ['resort-profile'] });

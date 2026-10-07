@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { usePermissions } from '@/hooks/usePermissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,7 +64,7 @@ const MaintenancePage = ({ embedded = false }: { embedded?: boolean }) => {
   } = useQuery<MaintenanceTask[]>({
     queryKey: ['maintenance-tasks', filter, employeeId, isAdmin],
     queryFn: async () => {
-      let query = supabase
+      let query = kapwaClient
         .from('employee_tasks')
         .select('id, employee_id, title, description, status, due_date, completed_at, created_at')
         .is('archived_at', null)
@@ -93,7 +93,7 @@ const MaintenancePage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await kapwaClient
         .from('employee_tasks')
         .update({
           status,
@@ -115,7 +115,7 @@ const MaintenancePage = ({ embedded = false }: { embedded?: boolean }) => {
   const addTask = useMutation({
     mutationFn: async () => {
       if (!employeeId) throw new Error('No employee is signed in on this device.');
-      const { error: insertError } = await supabase.from('employee_tasks').insert({
+      const { error: insertError } = await kapwaClient.from('employee_tasks').insert({
         employee_id: employeeId,
         title: title.trim(),
         description: details.trim(),

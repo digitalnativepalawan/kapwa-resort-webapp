@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -12,7 +12,7 @@ import { canEdit } from '@/lib/permissions';
 import EditTourModal from '@/components/rooms/EditTourModal';
 import EditRequestModal from '@/components/rooms/EditRequestModal';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const SESSION_KEY = 'staff_home_session';
 const getSession = () => {
@@ -74,7 +74,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: tourBookings = [] } = useQuery({
     queryKey: ['tour-bookings-experiences'],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any)
+      const { data } = await (kapwaClient.from('tour_bookings') as any)
         .select('*')
         .in('status', ['pending', 'confirmed', 'booked', 'completed'])
         .gte('tour_date', todayStr)
@@ -111,7 +111,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: recentTours = [] } = useQuery({
     queryKey: ['recent-tours-history'],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any)
+      const { data } = await (kapwaClient.from('tour_bookings') as any)
         .select('*')
         .in('status', ['completed', 'cancelled'])
         .gte('tour_date', subDays(new Date(), 1).toISOString().split('T')[0])
@@ -122,22 +122,22 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   // Realtime subscriptions for guest_requests and tour_bookings
   useEffect(() => {
-    const ch1 = supabase
+    const ch1 = kapwaClient
       .channel('experiences-requests-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_requests' }, () => {
         qc.invalidateQueries({ queryKey: ['all-requests-experiences'] });
         qc.invalidateQueries({ queryKey: ['recent-requests-history'] });
       })
       .subscribe();
-    const ch2 = supabase
+    const ch2 = kapwaClient
       .channel('experiences-tour-bookings-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tour_bookings' }, () => {
         qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(ch1);
-      supabase.removeChannel(ch2);
+      kapwaClient.removeChannel(ch1);
+      kapwaClient.removeChannel(ch2);
     };
   }, [qc]);
 
@@ -191,13 +191,13 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const getRoomInfo = async (roomId: string) => {
-    const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
+    const { data } = await kapwaClient.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
     return data;
   };
 
   const updateTourStatus = async (id: string, status: string, tour?: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({ status, confirmed_by: staffName }).eq('id', id);
+    await (kapwaClient.from('tour_bookings') as any).update({ status, confirmed_by: staffName }).eq('id', id);
 
     // Room charge is handled solely by RoomBillingTab to avoid duplicate transactions
 
@@ -207,7 +207,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const confirmTourBooking = async (b: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'confirmed',
       confirmed_by: staffName,
     }).eq('id', b.id);
@@ -215,7 +215,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
     // Insert room charge
     if (Number(b.price) > 0 && b.room_id) {
       const room = await getRoomInfo(b.room_id);
-      await (supabase.from('room_transactions') as any).insert({
+      await (kapwaClient.from('room_transactions') as any).insert({
         unit_id: b.room_id,
         unit_name: room?.unit_name || '',
         booking_id: b.booking_id,
@@ -237,7 +237,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const cancelTourBooking = async (id: string) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'cancelled',
       confirmed_by: staffName,
     }).eq('id', id);
@@ -247,7 +247,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const completeTourBooking = async (id: string) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({ status: 'completed' }).eq('id', id);
+    await (kapwaClient.from('tour_bookings') as any).update({ status: 'completed' }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['tour-bookings-experiences'] });
     toast.success('Tour completed');
   };
@@ -261,7 +261,7 @@ const ExperiencesPage = ({ embedded = false }: { embedded?: boolean }) => {
       const price = parsePriceFromDetails(req.details);
       if (price > 0 && req.room_id) {
         const room = await getRoomInfo(req.room_id);
-        await (supabase.from('room_transactions') as any).insert({
+        await (kapwaClient.from('room_transactions') as any).insert({
           unit_id: req.room_id,
           unit_name: room?.unit_name || '',
           booking_id: req.booking_id,

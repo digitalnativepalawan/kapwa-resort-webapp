@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export interface PaymentMethod {
   id: string;
@@ -14,7 +14,7 @@ export const usePaymentMethods = () => {
   return useQuery({
     queryKey: ['payment-methods'],
     queryFn: async () => {
-      const { data } = await (supabase.from('payment_methods' as any) as any)
+      const { data } = await (kapwaClient.from('payment_methods' as any) as any)
         .select('*')
         .order('sort_order');
       return (data || []) as PaymentMethod[];

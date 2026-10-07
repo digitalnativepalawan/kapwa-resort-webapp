@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -73,12 +73,12 @@ const EditGuestModal = ({ open, onOpenChange, guest, booking }: EditGuestModalPr
       const finalNotes = isVip ? `[VIP] ${form.notes}`.trim() : form.notes;
 
       await Promise.all([
-        supabase.from('resort_ops_guests' as any).update({
+        kapwaClient.from('resort_ops_guests' as any).update({
           full_name: form.full_name.trim(),
           phone: form.phone || null,
           email: form.email || null,
         }).eq('id', guest.id),
-        supabase.from('resort_ops_bookings' as any).update({
+        kapwaClient.from('resort_ops_bookings' as any).update({
           check_in: form.check_in,
           check_out: form.check_out,
           adults: parseInt(form.adults) || 1,

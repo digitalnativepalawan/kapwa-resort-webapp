@@ -1,8 +1,8 @@
 -- ============================================================================
 -- RLS Phase 2 — Crown-jewel tables (claim-based access)
 -- ============================================================================
--- DO NOT place this file in supabase/migrations until it has been validated on a
--- STAGING project. It is kept under docs/ on purpose so `supabase db push` does
+-- DO NOT place this file in db until it has been validated on a
+-- STAGING project. It is kept under docs/ on purpose so `kapwa db push` does
 -- NOT auto-apply it. See docs/security/rls-migration.md for the rollout order.
 --
 -- Prerequisites (must be true BEFORE applying this file to any environment):

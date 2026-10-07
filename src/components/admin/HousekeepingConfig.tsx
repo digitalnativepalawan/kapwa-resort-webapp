@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -18,7 +18,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: roomTypes = [] } = useQuery({
     queryKey: ['room-types'],
     queryFn: async () => {
-      const { data } = await supabase.from('room_types').select('*').order('name');
+      const { data } = await kapwaClient.from('room_types').select('*').order('name');
       return data || [];
     },
   });
@@ -26,7 +26,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: units = [] } = useQuery({
     queryKey: ['units-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').order('unit_name');
       return data || [];
     },
   });
@@ -34,7 +34,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: checklists = [] } = useQuery({
     queryKey: ['housekeeping-checklists'],
     queryFn: async () => {
-      const { data } = await supabase.from('housekeeping_checklists').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('housekeeping_checklists').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -42,7 +42,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: packages = [] } = useQuery({
     queryKey: ['cleaning-packages'],
     queryFn: async () => {
-      const { data } = await supabase.from('cleaning_packages').select('*').order('name');
+      const { data } = await kapwaClient.from('cleaning_packages').select('*').order('name');
       return data || [];
     },
   });
@@ -50,7 +50,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: packageItems = [] } = useQuery({
     queryKey: ['cleaning-package-items'],
     queryFn: async () => {
-      const { data } = await supabase.from('cleaning_package_items').select('*');
+      const { data } = await kapwaClient.from('cleaning_package_items').select('*');
       return data || [];
     },
   });
@@ -58,7 +58,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: ingredients = [] } = useQuery({
     queryKey: ['ingredients'],
     queryFn: async () => {
-      const { data } = await supabase.from('ingredients').select('*').order('name');
+      const { data } = await kapwaClient.from('ingredients').select('*').order('name');
       return data || [];
     },
   });
@@ -79,7 +79,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   const addChecklistItem = async () => {
     if (!newItemLabel.trim() || !activeChecklistTypeId) return;
     const maxSort = filteredChecklist.reduce((m: number, c: any) => Math.max(m, c.sort_order || 0), 0);
-    await supabase.from('housekeeping_checklists').insert({
+    await kapwaClient.from('housekeeping_checklists').insert({
       room_type_id: activeChecklistTypeId,
       item_label: newItemLabel.trim(),
       is_required: newItemRequired,
@@ -95,17 +95,17 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const toggleChecklistRequired = async (item: any) => {
-    await supabase.from('housekeeping_checklists').update({ is_required: !item.is_required }).eq('id', item.id);
+    await kapwaClient.from('housekeeping_checklists').update({ is_required: !item.is_required }).eq('id', item.id);
     qc.invalidateQueries({ queryKey: ['housekeeping-checklists'] });
   };
 
   const updateChecklistCount = async (id: string, count: number | null) => {
-    await supabase.from('housekeeping_checklists').update({ count_expected: count }).eq('id', id);
+    await kapwaClient.from('housekeeping_checklists').update({ count_expected: count }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['housekeeping-checklists'] });
   };
 
   const deleteChecklistItem = async (id: string) => {
-    await supabase.from('housekeeping_checklists').delete().eq('id', id);
+    await kapwaClient.from('housekeeping_checklists').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['housekeeping-checklists'] });
     toast.success('Checklist item deleted');
   };
@@ -122,7 +122,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const addPackage = async () => {
     if (!newPackageName.trim() || !activePackageTypeId) return;
-    await supabase.from('cleaning_packages').insert({
+    await kapwaClient.from('cleaning_packages').insert({
       room_type_id: activePackageTypeId,
       name: newPackageName.trim(),
     });
@@ -132,20 +132,20 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const deletePackage = async (id: string) => {
-    await supabase.from('cleaning_packages').delete().eq('id', id);
+    await kapwaClient.from('cleaning_packages').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['cleaning-packages'] });
     toast.success('Package deleted');
   };
 
   const duplicatePackage = async (pkg: any) => {
-    const { data: newPkg } = await supabase.from('cleaning_packages').insert({
+    const { data: newPkg } = await kapwaClient.from('cleaning_packages').insert({
       room_type_id: pkg.room_type_id,
       name: `${pkg.name} (Copy)`,
     }).select().single();
     if (newPkg) {
       const items = packageItems.filter((pi: any) => pi.package_id === pkg.id);
       for (const item of items) {
-        await supabase.from('cleaning_package_items').insert({
+        await kapwaClient.from('cleaning_package_items').insert({
           package_id: newPkg.id,
           ingredient_id: item.ingredient_id,
           default_quantity: item.default_quantity,
@@ -158,7 +158,7 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const addPackageItem = async (packageId: string) => {
     if (!addIngredientId || !addIngredientQty) return;
-    await supabase.from('cleaning_package_items').insert({
+    await kapwaClient.from('cleaning_package_items').insert({
       package_id: packageId,
       ingredient_id: addIngredientId,
       default_quantity: parseFloat(addIngredientQty) || 0,
@@ -170,13 +170,13 @@ const HousekeepingConfig = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const deletePackageItem = async (id: string) => {
-    await supabase.from('cleaning_package_items').delete().eq('id', id);
+    await kapwaClient.from('cleaning_package_items').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['cleaning-package-items'] });
     toast.success('Supply removed');
   };
 
   const updatePackageItemQty = async (id: string, qty: number) => {
-    await supabase.from('cleaning_package_items').update({ default_quantity: qty }).eq('id', id);
+    await kapwaClient.from('cleaning_package_items').update({ default_quantity: qty }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['cleaning-package-items'] });
   };
 

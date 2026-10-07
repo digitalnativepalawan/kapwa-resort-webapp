@@ -1,10 +1,9 @@
 -- ============================================================================
 -- KAPWA Hospitality OS — Neon PostgreSQL Application & Database Permissions
 -- ============================================================================
--- Replaces Supabase PostgREST `auth.jwt()` RLS helpers with standard PostgreSQL
--- session-variable helpers (`app.employee_id`, `app.is_admin`, `app.permissions`)
--- set per request by the KAPWA Node/Express backend, alongside application-layer
--- RBAC enforcement in `server/middleware/permissions.js`.
+-- Standard PostgreSQL session-variable helpers (`app.employee_id`, `app.is_admin`,
+-- `app.permissions`) set per request by the KAPWA Node/Express backend, alongside
+-- application-layer RBAC enforcement in `server/middleware/permissions.js`.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.app_permissions()

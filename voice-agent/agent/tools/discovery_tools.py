@@ -7,7 +7,7 @@ find_events: tours/activities happening soon, from tours_config + tour_bookings.
 """
 from __future__ import annotations
 from datetime import datetime, timedelta
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 from agent.tools.base import ToolResult
 
 

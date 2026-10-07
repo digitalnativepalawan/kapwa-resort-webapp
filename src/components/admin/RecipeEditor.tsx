@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectGroup, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,7 +27,7 @@ const RecipeEditor = ({ menuItemId, onFoodCostUpdate, hasOverride }: RecipeEdito
   const { data: ingredients = [] } = useQuery({
     queryKey: ['ingredients'],
     queryFn: async () => {
-      const { data } = await supabase.from('ingredients').select('*').order('name');
+      const { data } = await kapwaClient.from('ingredients').select('*').order('name');
       return data || [];
     },
   });
@@ -35,7 +35,7 @@ const RecipeEditor = ({ menuItemId, onFoodCostUpdate, hasOverride }: RecipeEdito
   const { data: recipeIngredients = [], isLoading } = useQuery({
     queryKey: ['recipe_ingredients', menuItemId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('recipe_ingredients')
         .select('*, ingredients(*)')
         .eq('menu_item_id', menuItemId);
@@ -71,7 +71,7 @@ const RecipeEditor = ({ menuItemId, onFoodCostUpdate, hasOverride }: RecipeEdito
       return;
     }
     setQtyError(false);
-    const { error } = await supabase.from('recipe_ingredients').upsert({
+    const { error } = await kapwaClient.from('recipe_ingredients').upsert({
       menu_item_id: menuItemId,
       ingredient_id: newIngId,
       quantity: qty,
@@ -87,7 +87,7 @@ const RecipeEditor = ({ menuItemId, onFoodCostUpdate, hasOverride }: RecipeEdito
   };
 
   const removeIngredient = async (id: string) => {
-    await supabase.from('recipe_ingredients').delete().eq('id', id);
+    await kapwaClient.from('recipe_ingredients').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['recipe_ingredients', menuItemId] });
   };
 
@@ -96,7 +96,7 @@ const RecipeEditor = ({ menuItemId, onFoodCostUpdate, hasOverride }: RecipeEdito
       toast.error('Quantity must be greater than 0');
       return;
     }
-    await supabase.from('recipe_ingredients').update({ quantity: qty }).eq('id', id);
+    await kapwaClient.from('recipe_ingredients').update({ quantity: qty }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['recipe_ingredients', menuItemId] });
   };
 

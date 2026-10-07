@@ -1,1 +1,0 @@
-ALTER TABLE public.resort_profile ADD COLUMN logo_size integer DEFAULT 128;

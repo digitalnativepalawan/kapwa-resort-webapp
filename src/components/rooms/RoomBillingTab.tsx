@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRoomTransactions } from '@/hooks/useRoomTransactions';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
@@ -24,7 +24,7 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/auditLog';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 
-const from = (t: string) => supabase.from(t as any) as any;
+const from = (t: string) => kapwaClient.from(t as any) as any;
 
 interface RoomBillingTabProps {
   unit: any;
@@ -63,10 +63,10 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     enabled: !!unit,
     refetchInterval: 10000,
     queryFn: async () => {
-      const { data: byRoom } = await supabase.from('orders').select('*')
+      const { data: byRoom } = await kapwaClient.from('orders').select('*')
         .eq('room_id', unit.id).in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
         .order('created_at', { ascending: false });
-      const { data: byLocation } = await supabase.from('orders').select('*')
+      const { data: byLocation } = await kapwaClient.from('orders').select('*')
         .is('room_id', null).eq('location_detail', unit.name)
         .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
         .order('created_at', { ascending: false });
@@ -91,12 +91,12 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   // ── Realtime subscription for orders ──
   useEffect(() => {
     if (!unit) return;
-    const channel = supabase.channel(`billing-orders-${unit.id}`)
+    const channel = kapwaClient.channel(`billing-orders-${unit.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['billing-room-orders', unit.id, unit.name, booking?.id] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [unit?.id, booking?.id]);
 
   // ── Guest tours ──
@@ -153,23 +153,23 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
 
   // ── Actions ──
   const handleCompOrder = async (orderId: string) => {
-    await supabase.from('orders').update({ status: 'Paid', payment_type: 'Comp' }).eq('id', orderId);
+    await kapwaClient.from('orders').update({ status: 'Paid', payment_type: 'Comp' }).eq('id', orderId);
     await logAudit('updated', 'orders', orderId, `Comped order by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
     toast.success('Order comped');
   };
 
   const handleMarkPaidOrder = async (orderId: string) => {
-    await supabase.from('orders').update({ status: 'Paid', payment_type: 'Cash', closed_at: new Date().toISOString() }).eq('id', orderId);
+    await kapwaClient.from('orders').update({ status: 'Paid', payment_type: 'Cash', closed_at: new Date().toISOString() }).eq('id', orderId);
     await logAudit('updated', 'orders', orderId, `Marked order paid by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
     toast.success('Order marked as paid');
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    await supabase.from('room_transactions').delete().eq('order_id', orderId);
-    await supabase.from('inventory_logs').delete().eq('order_id', orderId);
-    const { error } = await supabase.from('orders').delete().eq('id', orderId);
+    await kapwaClient.from('room_transactions').delete().eq('order_id', orderId);
+    await kapwaClient.from('inventory_logs').delete().eq('order_id', orderId);
+    const { error } = await kapwaClient.from('orders').delete().eq('id', orderId);
     if (error) { toast.error(`Delete failed: ${error.message}`); return; }
     await logAudit('deleted', 'orders', orderId, `Deleted order by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
@@ -180,7 +180,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   const handleEditOrderSave = async (orderId: string) => {
     const newTotal = parseFloat(editOrderAmount);
     if (isNaN(newTotal) || newTotal < 0) { toast.error('Enter a valid amount'); return; }
-    await supabase.from('orders').update({ total: newTotal }).eq('id', orderId);
+    await kapwaClient.from('orders').update({ total: newTotal }).eq('id', orderId);
     await logAudit('updated', 'orders', orderId, `Edited order total to ₱${newTotal.toLocaleString()} by ${staffName}`);
     qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
     setEditingOrderId(null);
@@ -205,7 +205,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     await from('guest_tours').update({ status: 'completed' }).eq('id', tourId);
     // Post tour charge to room ledger
     if (tour && Number(tour.price) > 0 && booking?.id) {
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unit.id,
         unit_name: unit.name,
         guest_name: guestName,
@@ -254,7 +254,7 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     await from('guest_requests').update({ status: 'completed' }).eq('id', reqId);
     // Post request charge to room ledger if it has a price
     if (req && Number(req.price) > 0 && booking?.id) {
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unit.id,
         unit_name: unit.name,
         guest_name: guestName,
@@ -327,14 +327,14 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
     try {
       const ids = Array.from(selectedOrderIds);
       for (const id of ids) {
-        await supabase.from('orders').update({
+        await kapwaClient.from('orders').update({
           status: 'Paid',
           payment_type: paySelectedMethod,
           closed_at: new Date().toISOString(),
         }).eq('id', id);
       }
       // Record a payment transaction on the room ledger
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unit.id,
         unit_name: unit.name,
         guest_name: guestName,
@@ -413,12 +413,12 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
   // Realtime for disputes
   useEffect(() => {
     if (!booking?.id) return;
-    const channel = supabase.channel(`billing-disputes-${booking.id}`)
+    const channel = kapwaClient.channel(`billing-disputes-${booking.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bill_disputes', filter: `booking_id=eq.${booking.id}` }, () => {
         qc.invalidateQueries({ queryKey: ['billing-disputes', booking.id] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [booking?.id]);
 
   const openDisputes = disputes.filter((d: any) => d.status === 'open');
@@ -646,8 +646,8 @@ const RoomBillingTab = ({ unit, booking, guestName, readOnly = false }: RoomBill
                       )}
                       {isChargedToRoom && (
                         <Button size="sm" variant="ghost" onClick={async () => {
-                          await supabase.from('orders').update({ status: 'Paid', payment_type: 'Cash', closed_at: new Date().toISOString() }).eq('id', o.id);
-                          await supabase.from('room_transactions').delete().eq('order_id', o.id);
+                          await kapwaClient.from('orders').update({ status: 'Paid', payment_type: 'Cash', closed_at: new Date().toISOString() }).eq('id', o.id);
+                          await kapwaClient.from('room_transactions').delete().eq('order_id', o.id);
                           await logAudit('updated', 'orders', o.id, `Collected room charge payment by ${staffName}`);
                           qc.invalidateQueries({ queryKey: ['billing-room-orders'] });
                           qc.invalidateQueries({ queryKey: ['room-transactions', unit.id] });

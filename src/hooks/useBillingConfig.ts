@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export interface BillingConfig {
   id: string;
@@ -31,7 +31,7 @@ export const useBillingConfig = () => {
   return useQuery({
     queryKey: ['billing-config'],
     queryFn: async () => {
-      const { data } = await (supabase.from('billing_config' as any) as any)
+      const { data } = await (kapwaClient.from('billing_config' as any) as any)
         .select('*')
         .limit(1)
         .maybeSingle();

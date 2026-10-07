@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const HousekeepingPerformance = () => {
   const [monthOffset, setMonthOffset] = useState(0);

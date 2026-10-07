@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -49,7 +49,7 @@ const GuestPaymentSection = ({ bookingId, roomId, unitName, guestName, balance, 
   const { data: settings } = useQuery({
     queryKey: ['guest-payment-settings'],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_payment_settings') as any)
+      const { data } = await (kapwaClient.from('guest_payment_settings') as any)
         .select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
       return data;
     },
@@ -58,7 +58,7 @@ const GuestPaymentSection = ({ bookingId, roomId, unitName, guestName, balance, 
   const { data: mySubmissions = [] } = useQuery({
     queryKey: ['guest-my-payments', bookingId, unitName],
     queryFn: async () => {
-      let q = (supabase.from('guest_payment_submissions') as any).select('*').order('created_at', { ascending: false });
+      let q = (kapwaClient.from('guest_payment_submissions') as any).select('*').order('created_at', { ascending: false });
       q = bookingId ? q.eq('booking_id', bookingId) : q.eq('unit_name', unitName);
       const { data } = await q;
       return data || [];
@@ -91,7 +91,7 @@ const GuestPaymentSection = ({ bookingId, roomId, unitName, guestName, balance, 
     }
     setSubmitting(true);
     try {
-      const { error } = await (supabase.from('guest_payment_submissions') as any).insert({
+      const { error } = await (kapwaClient.from('guest_payment_submissions') as any).insert({
         booking_id: bookingId,
         room_id: roomId,
         unit_name: unitName,

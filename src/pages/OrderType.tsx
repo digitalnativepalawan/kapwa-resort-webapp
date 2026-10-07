@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ const OrderType = () => {
   const { data: orderTypes = [] } = useQuery({
     queryKey: ['order-types'],
     queryFn: async () => {
-      const { data } = await supabase.from('order_types').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('order_types').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -29,7 +29,7 @@ const OrderType = () => {
   const { data: units } = useQuery({
     queryKey: ['units'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').eq('active', true).order('unit_name');
       return data || [];
     },
   });
@@ -37,7 +37,7 @@ const OrderType = () => {
   const { data: tables } = useQuery({
     queryKey: ['resort_tables'],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_tables').select('*').eq('active', true).order('table_name');
+      const { data } = await kapwaClient.from('resort_tables').select('*').eq('active', true).order('table_name');
       return data || [];
     },
   });
@@ -51,7 +51,7 @@ const OrderType = () => {
       const today = new Date().toISOString().split('T')[0];
 
       // Single query: active bookings with guest names and unit names
-      const { data: bookings } = await supabase
+      const { data: bookings } = await kapwaClient
         .from('resort_ops_bookings')
         .select('id, check_in, check_out, unit_id, resort_ops_guests(full_name), resort_ops_units(name)')
         .lte('check_in', today)
@@ -61,7 +61,7 @@ const OrderType = () => {
       if (!bookings || bookings.length === 0) return [];
 
       // Fetch units list (self-contained, no external dependency)
-      const { data: unitsList } = await supabase
+      const { data: unitsList } = await kapwaClient
         .from('units')
         .select('id, unit_name')
         .eq('active', true);

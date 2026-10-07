@@ -10,7 +10,7 @@ loadResortState → plan (deterministic, goal-driven) → LLM triage per case (p
 → verify open cases against the DATABASE → retry → escalate past SLA → audit everything → repeat
 ```
 
-## Components (all in `supabase/functions/resort-operator/`)
+## Components (all in `server/operator/`)
 
 | File | Layer |
 |---|---|

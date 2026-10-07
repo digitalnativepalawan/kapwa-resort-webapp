@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,7 +43,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
   const { data: tasks = [] } = useQuery({
     queryKey: ['employee-tasks', employeeId, filter],
     queryFn: async () => {
-      let q = (supabase.from('employee_tasks' as any) as any).select('*').order('created_at', { ascending: false });
+      let q = (kapwaClient.from('employee_tasks' as any) as any).select('*').order('created_at', { ascending: false });
       if (employeeId) q = q.eq('employee_id', employeeId);
       if (filter === 'archived') {
         q = q.not('archived_at', 'is', null);
@@ -61,7 +61,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
     queryKey: ['task-comment-counts', taskIds.join(',')],
     queryFn: async () => {
       if (taskIds.length === 0) return {};
-      const { data } = await (supabase.from('task_comments' as any) as any)
+      const { data } = await (kapwaClient.from('task_comments' as any) as any)
         .select('task_id')
         .in('task_id', taskIds);
       const counts: Record<string, number> = {};
@@ -149,7 +149,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
       created_by: createdBy,
     }));
 
-    await (supabase.from('employee_tasks' as any) as any).insert(rows);
+    await (kapwaClient.from('employee_tasks' as any) as any).insert(rows);
 
     const savedTitle = title.trim();
     const savedDesc = description.trim();
@@ -170,7 +170,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
       comment: comment.trim() || null,
       image_url: imageUrl || null,
     };
-    await (supabase.from('employee_tasks' as any) as any).update({
+    await (kapwaClient.from('employee_tasks' as any) as any).update({
       status: 'completed',
       completed_at: new Date().toISOString(),
       completion_meta: completionMeta,
@@ -183,7 +183,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
   const toggleComplete = async (task: any) => {
     if (task.status === 'completed') {
       // Uncomplete
-      await (supabase.from('employee_tasks' as any) as any).update({
+      await (kapwaClient.from('employee_tasks' as any) as any).update({
         status: 'pending',
         completed_at: null,
         completion_meta: {},
@@ -198,7 +198,7 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
 
   const saveEdit = async () => {
     if (!editId || !editTitle.trim()) return;
-    await (supabase.from('employee_tasks' as any) as any).update({
+    await (kapwaClient.from('employee_tasks' as any) as any).update({
       title: editTitle.trim(),
       description: editDesc.trim(),
       due_date: editDue ? new Date(editDue).toISOString() : null,
@@ -209,13 +209,13 @@ const EmployeeTaskList = ({ employeeId, createdBy = 'admin', readOnly = false, e
   };
 
   const archiveTask = async (id: string) => {
-    await (supabase.from('employee_tasks' as any) as any).update({ archived_at: new Date().toISOString() }).eq('id', id);
+    await (kapwaClient.from('employee_tasks' as any) as any).update({ archived_at: new Date().toISOString() }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['employee-tasks'] });
     toast.success('Task archived');
   };
 
   const restoreTask = async (id: string) => {
-    await (supabase.from('employee_tasks' as any) as any).update({ archived_at: null }).eq('id', id);
+    await (kapwaClient.from('employee_tasks' as any) as any).update({ archived_at: null }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['employee-tasks'] });
     toast.success('Task restored');
   };

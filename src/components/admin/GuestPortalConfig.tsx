@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -14,7 +14,7 @@ const GuestPortalConfig = () => {
   const { data: tours = [] } = useQuery({
     queryKey: ['tours-config'],
     queryFn: async () => {
-      const { data } = await supabase.from('tours_config').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('tours_config').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -22,7 +22,7 @@ const GuestPortalConfig = () => {
   const { data: transport = [] } = useQuery({
     queryKey: ['transport-rates'],
     queryFn: async () => {
-      const { data } = await supabase.from('transport_rates').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('transport_rates').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -30,7 +30,7 @@ const GuestPortalConfig = () => {
   const { data: rentals = [] } = useQuery({
     queryKey: ['rental-rates'],
     queryFn: async () => {
-      const { data } = await supabase.from('rental_rates').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('rental_rates').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -38,7 +38,7 @@ const GuestPortalConfig = () => {
   const { data: requestCats = [] } = useQuery({
     queryKey: ['request-categories'],
     queryFn: async () => {
-      const { data } = await supabase.from('request_categories').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('request_categories').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -46,7 +46,7 @@ const GuestPortalConfig = () => {
   const { data: reviewCats = [] } = useQuery({
     queryKey: ['review-settings'],
     queryFn: async () => {
-      const { data } = await supabase.from('review_settings').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('review_settings').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -54,7 +54,7 @@ const GuestPortalConfig = () => {
   const { data: guestRequests = [] } = useQuery({
     queryKey: ['guest-requests-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('guest_requests').select('*').order('created_at', { ascending: false }).limit(50);
+      const { data } = await kapwaClient.from('guest_requests').select('*').order('created_at', { ascending: false }).limit(50);
       return data || [];
     },
   });
@@ -62,7 +62,7 @@ const GuestPortalConfig = () => {
   const { data: guestReviews = [] } = useQuery({
     queryKey: ['guest-reviews-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('guest_reviews').select('*').order('created_at', { ascending: false }).limit(50);
+      const { data } = await kapwaClient.from('guest_reviews').select('*').order('created_at', { ascending: false }).limit(50);
       return data || [];
     },
   });
@@ -70,7 +70,7 @@ const GuestPortalConfig = () => {
   const { data: tourBookings = [] } = useQuery({
     queryKey: ['tour-bookings-admin'],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any).select('*').order('created_at', { ascending: false }).limit(50);
+      const { data } = await (kapwaClient.from('tour_bookings') as any).select('*').order('created_at', { ascending: false }).limit(50);
       return data || [];
     },
   });
@@ -110,9 +110,9 @@ const ToursSection = ({ tours, qc }: { tours: any[]; qc: any }) => {
     if (!form.name.trim()) return;
     const payload = { name: form.name, description: form.description, price: parseFloat(form.price) || 0, duration: form.duration, schedule: form.schedule, max_pax: parseInt(form.max_pax) || 10, sort_order: tours.length };
     if (editId) {
-      await supabase.from('tours_config').update(payload).eq('id', editId);
+      await kapwaClient.from('tours_config').update(payload).eq('id', editId);
     } else {
-      await supabase.from('tours_config').insert(payload);
+      await kapwaClient.from('tours_config').insert(payload);
     }
     setForm({ name: '', description: '', price: '', duration: '', schedule: '', max_pax: '10' });
     setEditId(null);
@@ -121,13 +121,13 @@ const ToursSection = ({ tours, qc }: { tours: any[]; qc: any }) => {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('tours_config').delete().eq('id', id);
+    await kapwaClient.from('tours_config').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['tours-config'] });
     toast.success('Tour deleted');
   };
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from('tours_config').update({ active }).eq('id', id);
+    await kapwaClient.from('tours_config').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['tours-config'] });
   };
 
@@ -175,9 +175,9 @@ const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
     if (!form.destination.trim()) return;
     const payload = { type: `${form.origin} → ${form.destination}`, origin: form.origin, destination: form.destination, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length };
     if (editId) {
-      await supabase.from('transport_rates').update(payload).eq('id', editId);
+      await kapwaClient.from('transport_rates').update(payload).eq('id', editId);
     } else {
-      await supabase.from('transport_rates').insert(payload);
+      await kapwaClient.from('transport_rates').insert(payload);
     }
     setForm({ origin: 'San Vicente', destination: '', price: '', description: '' });
     setEditId(null);
@@ -186,12 +186,12 @@ const TransportSection = ({ items, qc }: { items: any[]; qc: any }) => {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('transport_rates').delete().eq('id', id);
+    await kapwaClient.from('transport_rates').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['transport-rates'] });
   };
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from('transport_rates').update({ active }).eq('id', id);
+    await kapwaClient.from('transport_rates').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['transport-rates'] });
   };
 
@@ -242,9 +242,9 @@ const RentalsSection = ({ items, qc }: { items: any[]; qc: any }) => {
     if (!form.rate_name.trim()) return;
     const payload = { item_type: form.item_type, rate_name: form.rate_name, price: parseFloat(form.price) || 0, description: form.description, sort_order: items.length };
     if (editId) {
-      await supabase.from('rental_rates').update(payload).eq('id', editId);
+      await kapwaClient.from('rental_rates').update(payload).eq('id', editId);
     } else {
-      await supabase.from('rental_rates').insert(payload);
+      await kapwaClient.from('rental_rates').insert(payload);
     }
     setForm({ item_type: 'Scooter', rate_name: '', price: '', description: '' });
     setEditId(null);
@@ -253,12 +253,12 @@ const RentalsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('rental_rates').delete().eq('id', id);
+    await kapwaClient.from('rental_rates').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['rental-rates'] });
   };
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from('rental_rates').update({ active }).eq('id', id);
+    await kapwaClient.from('rental_rates').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['rental-rates'] });
   };
 
@@ -302,10 +302,10 @@ const RequestCatsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const save = async () => {
     if (!name.trim()) return;
     if (editId) {
-      await supabase.from('request_categories').update({ name: name.trim(), icon }).eq('id', editId);
+      await kapwaClient.from('request_categories').update({ name: name.trim(), icon }).eq('id', editId);
       setEditId(null);
     } else {
-      await supabase.from('request_categories').insert({ name: name.trim(), icon, sort_order: items.length });
+      await kapwaClient.from('request_categories').insert({ name: name.trim(), icon, sort_order: items.length });
     }
     setName('');
     setIcon('📋');
@@ -314,12 +314,12 @@ const RequestCatsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('request_categories').delete().eq('id', id);
+    await kapwaClient.from('request_categories').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['request-categories'] });
   };
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from('request_categories').update({ active }).eq('id', id);
+    await kapwaClient.from('request_categories').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['request-categories'] });
   };
 
@@ -357,10 +357,10 @@ const ReviewSettingsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   const save = async () => {
     if (!name.trim()) return;
     if (editId) {
-      await supabase.from('review_settings').update({ category_name: name.trim() }).eq('id', editId);
+      await kapwaClient.from('review_settings').update({ category_name: name.trim() }).eq('id', editId);
       setEditId(null);
     } else {
-      await supabase.from('review_settings').insert({ category_name: name.trim(), sort_order: items.length });
+      await kapwaClient.from('review_settings').insert({ category_name: name.trim(), sort_order: items.length });
     }
     setName('');
     qc.invalidateQueries({ queryKey: ['review-settings'] });
@@ -368,12 +368,12 @@ const ReviewSettingsSection = ({ items, qc }: { items: any[]; qc: any }) => {
   };
 
   const remove = async (id: string) => {
-    await supabase.from('review_settings').delete().eq('id', id);
+    await kapwaClient.from('review_settings').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['review-settings'] });
   };
 
   const toggle = async (id: string, active: boolean) => {
-    await supabase.from('review_settings').update({ active }).eq('id', id);
+    await kapwaClient.from('review_settings').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['review-settings'] });
   };
 
@@ -412,7 +412,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
 
   // Helper: get room info from request's room_id
   const getRoomInfo = async (roomId: string) => {
-    const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
+    const { data } = await kapwaClient.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
     return data;
   };
 
@@ -420,7 +420,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
   const confirmRequest = async (r: any) => {
     const price = parsePriceFromDetails(r.details);
     // Update request: confirmed
-    await supabase.from('guest_requests').update({
+    await kapwaClient.from('guest_requests').update({
       status: 'confirmed',
       confirmed_by: staffName,
       updated_at: new Date().toISOString(),
@@ -429,7 +429,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
     // Create room charge if there's a price
     if (price > 0 && r.room_id) {
       const room = await getRoomInfo(r.room_id);
-      await (supabase.from('room_transactions') as any).insert({
+      await (kapwaClient.from('room_transactions') as any).insert({
         unit_id: r.room_id,
         unit_name: room?.unit_name || '',
         booking_id: r.booking_id,
@@ -449,7 +449,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
   };
 
   const cancelRequest = async (id: string) => {
-    await supabase.from('guest_requests').update({
+    await kapwaClient.from('guest_requests').update({
       status: 'cancelled',
       confirmed_by: staffName,
       updated_at: new Date().toISOString(),
@@ -459,7 +459,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
   };
 
   const completeRequest = async (id: string) => {
-    await supabase.from('guest_requests').update({
+    await kapwaClient.from('guest_requests').update({
       status: 'completed',
       updated_at: new Date().toISOString(),
     }).eq('id', id);
@@ -470,7 +470,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
   // --- Confirm a tour booking ---
   const confirmTour = async (b: any) => {
     // Update tour: confirmed
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'confirmed',
       confirmed_by: staffName,
     }).eq('id', b.id);
@@ -478,7 +478,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
     // Create room charge
     if (b.price > 0 && b.room_id) {
       const room = await getRoomInfo(b.room_id);
-      await (supabase.from('room_transactions') as any).insert({
+      await (kapwaClient.from('room_transactions') as any).insert({
         unit_id: b.room_id,
         unit_name: room?.unit_name || '',
         booking_id: b.booking_id,
@@ -498,7 +498,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
   };
 
   const cancelTour = async (id: string) => {
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'cancelled',
       confirmed_by: staffName,
     }).eq('id', id);
@@ -508,7 +508,7 @@ const ActivitySection = ({ requests, reviews, tourBookings, qc }: { requests: an
 
   // --- Acknowledge review ---
   const acknowledgeReview = async (id: string) => {
-    await supabase.from('guest_reviews').update({
+    await kapwaClient.from('guest_reviews').update({
       confirmed_by: staffName,
     } as any).eq('id', id);
     qc.invalidateQueries({ queryKey: ['guest-reviews-admin'] });

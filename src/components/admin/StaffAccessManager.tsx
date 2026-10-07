@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { type PermissionLevel, getPermissionLevel } from '@/lib/permissions';
 import { Plus, Pencil, Copy, Trash2, X } from 'lucide-react';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 /* ── Built-in role templates ── */
 const BUILTIN_ROLE_TEMPLATES: Record<string, string[]> = {
@@ -197,7 +197,7 @@ const StaffAccessManager = () => {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-access'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('*').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('*').eq('active', true).order('name');
       return data || [];
     },
   });

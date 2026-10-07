@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,7 @@ const AuditLogView = () => {
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ['audit-log'],
     queryFn: async () => {
-      const { data } = await (supabase.from('audit_log' as any) as any)
+      const { data } = await (kapwaClient.from('audit_log' as any) as any)
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
@@ -35,13 +35,13 @@ const AuditLogView = () => {
 
   // Realtime subscription
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('audit-log-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_log' }, () => {
         qc.invalidateQueries({ queryKey: ['audit-log'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   const staffNames = [...new Set(entries.map(e => e.employee_name))].sort();

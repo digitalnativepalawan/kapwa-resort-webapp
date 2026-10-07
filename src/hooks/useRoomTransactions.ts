@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export interface RoomTransaction {
   id: string;
@@ -24,7 +24,7 @@ export const useRoomTransactions = (unitId: string | null, bookingId?: string | 
     queryKey: ['room-transactions', unitId, bookingId],
     enabled: !!unitId,
     queryFn: async () => {
-      let query = (supabase.from('room_transactions' as any) as any)
+      let query = (kapwaClient.from('room_transactions' as any) as any)
         .select('*')
         .eq('unit_id', unitId);
       if (bookingId) {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import OrderCard from '@/components/admin/OrderCard';
 import { useResortProfile } from '@/hooks/useResortProfile';
@@ -69,19 +69,19 @@ const StaffOrdersView = () => {
 
   // Realtime subscription
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('staff-orders-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['orders-staff'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   const { data: orders = [] } = useQuery({
     queryKey: ['orders-staff'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
@@ -136,7 +136,7 @@ const StaffOrdersView = () => {
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu_items_staff'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('*').eq('available', true).order('sort_order');
+      const { data } = await kapwaClient.from('menu_items').select('*').eq('available', true).order('sort_order');
       return data || [];
     },
   });
@@ -144,7 +144,7 @@ const StaffOrdersView = () => {
   const { data: menuCategories = [] } = useQuery({
     queryKey: ['menu_categories_staff'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_categories').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('menu_categories').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -180,7 +180,7 @@ const StaffOrdersView = () => {
     const hasBar = newItems.some(i => i.department === 'bar' || i.department === 'both');
     const newTotal = newItems.reduce((s, i) => s + i.price * i.qty, 0);
     const newServiceCharge = Math.round(newTotal * 0.1);
-    await supabase.from('orders').insert({
+    await kapwaClient.from('orders').insert({
       items: newItems,
       total: newTotal,
       service_charge: newServiceCharge,
@@ -203,7 +203,7 @@ const StaffOrdersView = () => {
   const advanceOrder = async (orderId: string, nextStatus: string) => {
     const updateData: any = { status: nextStatus };
     if (nextStatus === 'Closed') updateData.closed_at = new Date().toISOString();
-    await supabase.from('orders').update(updateData).eq('id', orderId);
+    await kapwaClient.from('orders').update(updateData).eq('id', orderId);
 
     // Deduct inventory when moving to Preparing
     if (nextStatus === 'Preparing') {

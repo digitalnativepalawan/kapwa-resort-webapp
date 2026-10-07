@@ -1,1 +1,0 @@
-DELETE FROM resort_ops_bookings WHERE id = '0b754d15-345e-4b43-b0c0-b3e16b69eb23';

@@ -1,7 +1,7 @@
 # KAPWA OS — Commercial Pilot Plan
 
 Status: Draft v0.1 — source-of-truth notes for one private KAPWA Hospitality OS deployment.
-Scope: one property, one customer-controlled Supabase project, one domain, one dataset.
+Scope: one property, one customer-controlled Neon PostgreSQL project, one domain, one dataset.
 Audience: Merqato Digital + property owner/manager + implementation lead.
 
 ---
@@ -27,17 +27,17 @@ Audience: Merqato Digital + property owner/manager + implementation lead.
 - Hermes-assisted features: assistant chat panel exists in UI; backend coordination functions exist; loop/agent code exists in `voice-agent/` and as reusable architecture only.
 
 ### 1.2 Backend and runtime
-- Supabase: used for data, auth, storage, Edge Functions, and webhooks.
+- Neon PostgreSQL: used for data, auth, storage, Edge Functions, and webhooks.
 - Edge Functions: admin-summary, concierge-ai, employee-auth, forecast-7day, frontdesk-today, guest-requests-api, guest-search, housekeeping, ops-coordinator, orders-today, process-webhook-queue, reservations-ai, send-telegram, sirvoy-webhook, today-ops, tours-today, scan-receipt.
 - Server: Hermes proxy exists at `server/` with defined local transport identity and package metadata.
 - Local orchestral layer: voice agent module exists with agent loops, tools, memory schema, PWA frontend, and docker-compose automation.
-- Data persistence: Supabase-backed with operational tables, RLS policies in documentation, and service-role access patterns.
+- Data persistence: Neon PostgreSQL-backed with operational tables, RLS policies in documentation, and service-role access patterns.
 - Browser/build: Vite + React + TypeScript with shadcn/ui, route shells, layout system, and offline-capable PWA layer for voice agent frontend.
 
 ### 1.3 Security and compliance status
 - Row-level security: documented as rollout target, not assumed complete from source alone.
 - Employee PIN auth: function exists and mints staff JWTs during PIN login.
-- Staff JWT flow: not verified end-to-end from browser to Supabase/RPC here; review required before sale.
+- Staff JWT flow: not verified end-to-end from browser to Neon PostgreSQL/RPC here; review required before sale.
 - Browser security: localStorage/sessionStorage exposure, logout behavior, share-device risk, CSP/secure headers not verified here.
 - CORS: not verifyable from a static audit; customer install must set per-deployment allowlist.
 - External dependencies: `npm audit` shows moderate/high/critical issues in install tree; do not treat as safe until patched per customer deployment.
@@ -56,19 +56,19 @@ Principle: private deployment per customer. No multi-tenant SaaS in this phase.
 
 ### 2.1 What runs where
 - Browser: UI, offline shells, local form state, print-to-PDF exports, PWA voice-agent shell.
-- Supabase: auth, database, storage, scheduled/webhook integrations, Edge Functions.
+- Neon PostgreSQL: auth, database, storage, scheduled/webhook integrations, Edge Functions.
 - Optional Hermes/Ollama/LiveKit stack: voice concierge, daily summary, assistance, agent loops.
-- Merqato-supplied docker/service layer: private only when required; default is managed Supabase + optional private Hermes host.
+- Merqato-supplied docker/service layer: private only when required; default is managed Neon PostgreSQL + optional private Hermes host.
 
 ### 2.2 Data isolation
-- One Supabase project per customer.
+- One Neon PostgreSQL project per customer.
 - One service-role secret known only to deployment and Edge Functions.
 - Staff credentials and guest data never cross customers.
 - Backups are per-customer and stored under customer-controlled location.
 
 ### 2.3 Deployment shape
 - Customer-approved domain tied to Vercel or equivalent frontend host.
-- Frontend build env contains only public Supabase anon settings.
+- Frontend build env contains only public Neon PostgreSQL anon settings.
 - Internal Edge Function secret and Hermes API host are never exposed to browser.
 - All webhook and integration endpoints honor customer-specific allowlist.
 
@@ -100,11 +100,11 @@ Principle: private deployment per customer. No multi-tenant SaaS in this phase.
 ## 4. Customer installation checklist (repeatable)
 
 1. Repository clone on Vercel or private host with Node 22+ runtime.
-2. Create new customer Supabase project.
+2. Create new customer Neon PostgreSQL project.
 3. Apply database schema migrations.
 4. Apply RLS policy suite.
 5. Configure environment variables:
-   - public Supabase URL and anon key
+   - public Neon PostgreSQL URL and anon key
    - internal Edge Function secret
    - staff JWT secret
    - Hermes host/token if enabled

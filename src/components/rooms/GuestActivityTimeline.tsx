@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { format } from 'date-fns';
 import { LogIn, StickyNote, MapPin, DollarSign, UtensilsCrossed, Clock } from 'lucide-react';
 
@@ -24,7 +24,7 @@ const iconMap = {
   order: { icon: UtensilsCrossed, color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' },
 };
 
-const from = (t: string) => supabase.from(t as any) as any;
+const from = (t: string) => kapwaClient.from(t as any) as any;
 
 const GuestActivityTimeline = ({ booking, unit }: GuestActivityTimelineProps) => {
   const { data: notes = [] } = useQuery({
@@ -58,7 +58,7 @@ const GuestActivityTimeline = ({ booking, unit }: GuestActivityTimelineProps) =>
     queryKey: ['timeline-orders', unit?.name, booking?.id],
     enabled: !!unit?.name && !!booking,
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*')
+      const { data } = await kapwaClient.from('orders').select('*')
         .eq('order_type', 'Room')
         .eq('location_detail', unit.name)
         .gte('created_at', booking.check_in + 'T00:00:00')

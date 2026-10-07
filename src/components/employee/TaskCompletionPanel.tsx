@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Camera, CheckCircle2, X, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { compressImage } from '@/lib/imageCompress';
 
@@ -26,9 +26,9 @@ const TaskCompletionPanel = ({ taskTitle, onConfirm, onCancel }: Props) => {
       const compressed = await compressImage(file, 800);
       const ext = compressed.name.split('.').pop();
       const path = `task-proof/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('receipts').upload(path, compressed);
+      const { error } = await kapwaClient.storage.from('receipts').upload(path, compressed);
       if (error) throw error;
-      const { data: pub } = supabase.storage.from('receipts').getPublicUrl(path);
+      const { data: pub } = kapwaClient.storage.from('receipts').getPublicUrl(path);
       setImageUrl(pub.publicUrl);
       toast.success('Image uploaded');
     } catch {

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -28,7 +28,7 @@ const EmployeeContactConfig = () => {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-contact-config'],
     queryFn: async () => {
-      const { data } = await (supabase.from('employees' as any) as any)
+      const { data } = await (kapwaClient.from('employees' as any) as any)
         .select('id, name, display_name, messenger_link, preferred_contact_method, active, rate_type')
         .order('name');
       return (data || []) as EmployeeRow[];
@@ -46,7 +46,7 @@ const EmployeeContactConfig = () => {
   const saveRow = async (emp: EmployeeRow) => {
     const changes = edits[emp.id];
     if (!changes) return;
-    const { error } = await (supabase.from('employees' as any) as any)
+    const { error } = await (kapwaClient.from('employees' as any) as any)
       .update(changes)
       .eq('id', emp.id);
     if (error) { toast.error('Failed to save'); return; }

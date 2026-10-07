@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -70,11 +70,11 @@ const defaultSettings = {
 
 async function loadSharedBotData() {
   const [settingsResult, memoryResult] = await Promise.all([
-    (supabase.from('settings') as any)
+    (kapwaClient.from('settings') as any)
       .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens')
       .limit(1)
       .maybeSingle(),
-    (supabase.from('guest_faq_memory') as any)
+    (kapwaClient.from('guest_faq_memory') as any)
       .select('id, question, keywords, answer, active, sort_order')
       .eq('active', true)
       .order('sort_order'),
@@ -182,7 +182,7 @@ export default function TalaConcierge({ bookingId }: TalaConciergeProps) {
       if (settings.provider === 'ollama') {
         reply = await callOllama(settings, buildSystemPrompt(memory), history, userMessage);
       } else {
-        const { data, error } = await supabase.functions.invoke('guest-chat', {
+        const { data, error } = await kapwaClient.functions.invoke('guest-chat', {
           body: {
             message: userMessage,
             memory,

@@ -158,6 +158,6 @@ class KapwaDbClient:
 
 
 @lru_cache(maxsize=1)
-def get_supabase() -> KapwaDbClient:
+def get_kapwa_db() -> KapwaDbClient:
     cfg = load_settings()
     return KapwaDbClient(cfg.kapwa_api_url, cfg.internal_fn_secret)

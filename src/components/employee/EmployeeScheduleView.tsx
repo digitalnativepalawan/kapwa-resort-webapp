@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Clock } from 'lucide-react';
@@ -31,7 +31,7 @@ const EmployeeScheduleView = ({ employeeId }: { employeeId: string }) => {
   const { data: schedules = [] } = useQuery<Schedule[]>({
     queryKey: ['emp-weekly-schedule', employeeId, startStr],
     queryFn: async () => {
-      const { data } = await supabase.from('weekly_schedules').select('*')
+      const { data } = await kapwaClient.from('weekly_schedules').select('*')
         .eq('employee_id', employeeId)
         .gte('schedule_date', startStr).lte('schedule_date', endStr);
       return (data || []) as Schedule[];
@@ -39,11 +39,11 @@ const EmployeeScheduleView = ({ employeeId }: { employeeId: string }) => {
   });
 
   useEffect(() => {
-    const ch = supabase.channel('emp-schedule-rt')
+    const ch = kapwaClient.channel('emp-schedule-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'weekly_schedules' }, () => {
         qc.invalidateQueries({ queryKey: ['emp-weekly-schedule'] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { kapwaClient.removeChannel(ch); };
   }, [qc]);
 
   const goCurrentWeek = () => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));

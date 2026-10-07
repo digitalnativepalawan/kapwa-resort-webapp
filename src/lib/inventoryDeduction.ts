@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 /**
  * Deduct ingredient stock for all items in an order based on their recipes.
@@ -17,7 +17,7 @@ export async function deductInventoryForOrder(
 ) {
   // Get all menu items that match the order items by name
   const itemNames = items.map(i => i.name);
-  const { data: menuItems } = await supabase
+  const { data: menuItems } = await kapwaClient
     .from('menu_items')
     .select('id, name, department')
     .in('name', itemNames);
@@ -26,7 +26,7 @@ export async function deductInventoryForOrder(
 
   // Get recipe ingredients for these menu items
   const menuItemIds = menuItems.map(m => m.id);
-  const { data: recipes } = await supabase
+  const { data: recipes } = await kapwaClient
     .from('recipe_ingredients')
     .select('*, ingredients(*)')
     .in('menu_item_id', menuItemIds);
@@ -45,7 +45,7 @@ export async function deductInventoryForOrder(
   }
 
   // Check for existing deductions for this order to prevent duplicates
-  const { data: existingLogs } = await supabase
+  const { data: existingLogs } = await kapwaClient
     .from('inventory_logs')
     .select('ingredient_id')
     .eq('order_id', orderId)
@@ -78,13 +78,13 @@ export async function deductInventoryForOrder(
     const deduction = ri.quantity * orderQty;
 
     // Atomic stock decrement via DB function (prevents race conditions)
-    await supabase.rpc('decrement_stock', {
+    await kapwaClient.rpc('decrement_stock', {
       p_ingredient_id: ri.ingredient_id,
       p_amount: deduction,
     });
 
     // Log the deduction with department
-    await supabase.from('inventory_logs').insert({
+    await kapwaClient.from('inventory_logs').insert({
       ingredient_id: ri.ingredient_id,
       change_qty: -deduction,
       reason: 'order_deduction',

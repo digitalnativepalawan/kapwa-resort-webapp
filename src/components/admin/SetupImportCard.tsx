@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
 import { Upload, FileArchive, ShieldAlert, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -111,16 +111,16 @@ const SetupImportCard = () => {
 
         // Delete existing rows then insert — avoids "No suitable key or wrong key type"
         // for tables whose PK isn't `id` (singletons, composite keys, etc.).
-        const del = await (supabase.from(table as any) as any).delete().not('id', 'is', null);
+        const del = await (kapwaClient.from(table as any) as any).delete().not('id', 'is', null);
         if (del.error) {
-          const del2 = await (supabase.from(table as any) as any).delete().gte('created_at', '1900-01-01');
+          const del2 = await (kapwaClient.from(table as any) as any).delete().gte('created_at', '1900-01-01');
           if (del2.error) {
             results.push({ table, count: 0, error: `delete: ${del2.error.message}` });
             continue;
           }
         }
 
-        const { error } = await (supabase.from(table as any) as any).insert(rows);
+        const { error } = await (kapwaClient.from(table as any) as any).insert(rows);
 
         if (error) {
           results.push({ table, count: 0, error: error.message });

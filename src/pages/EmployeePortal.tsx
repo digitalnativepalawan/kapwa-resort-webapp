@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +46,7 @@ const EmployeePortal = () => {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-active-portal'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('*').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('*').eq('active', true).order('name');
       return data || [];
     },
   });
@@ -58,7 +58,7 @@ const EmployeePortal = () => {
     queryKey: ['emp-shifts', empId],
     enabled: !!empId,
     queryFn: async () => {
-      const { data } = await supabase.from('employee_shifts').select('*')
+      const { data } = await kapwaClient.from('employee_shifts').select('*')
         .eq('employee_id', empId!).order('clock_in', { ascending: false }).limit(100);
       return data || [];
     },
@@ -76,7 +76,7 @@ const EmployeePortal = () => {
     queryKey: ['emp-payments', empId],
     enabled: !!empId,
     queryFn: async () => {
-      const { data } = await (supabase.from('payroll_payments') as any).select('*')
+      const { data } = await (kapwaClient.from('payroll_payments') as any).select('*')
         .eq('employee_id', empId!).order('paid_at', { ascending: false }).limit(50);
       return (data || []) as any[];
     },
@@ -87,7 +87,7 @@ const EmployeePortal = () => {
     queryKey: ['emp-permissions', empId],
     enabled: !!empId,
     queryFn: async () => {
-      const { data } = await (supabase.from('employee_permissions' as any) as any)
+      const { data } = await (kapwaClient.from('employee_permissions' as any) as any)
         .select('permission').eq('employee_id', empId!);
       return ((data || []) as any[]).map((p: any) => p.permission as string);
     },
@@ -98,7 +98,7 @@ const EmployeePortal = () => {
     queryKey: ['emp-bonuses', empId],
     enabled: !!empId,
     queryFn: async () => {
-      const { data } = await (supabase.from('employee_bonuses' as any) as any).select('*')
+      const { data } = await (kapwaClient.from('employee_bonuses' as any) as any).select('*')
         .eq('employee_id', empId!).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
@@ -107,20 +107,20 @@ const EmployeePortal = () => {
   // Realtime shifts
   useEffect(() => {
     if (!empId) return;
-    const channel = supabase
+    const channel = kapwaClient
       .channel('emp-shifts-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'employee_shifts' }, () => {
         qc.invalidateQueries({ queryKey: ['emp-shifts', empId] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [empId, qc]);
 
   const login = async () => {
     if (!loginName || !loginPin) return;
     setLoginLoading(true);
     try {
-      const res = await supabase.functions.invoke('employee-auth', {
+      const res = await kapwaClient.functions.invoke('employee-auth', {
         body: { action: 'verify', name: loginName, pin: loginPin },
       });
       const data = res.data;
@@ -156,7 +156,7 @@ const EmployeePortal = () => {
 
   const clockIn = async () => {
     if (!empId) return;
-    await supabase.from('employee_shifts').insert({ employee_id: empId, clock_in: new Date().toISOString() });
+    await kapwaClient.from('employee_shifts').insert({ employee_id: empId, clock_in: new Date().toISOString() });
     qc.invalidateQueries({ queryKey: ['emp-shifts', empId] });
     toast.success('Clocked in!');
   };
@@ -172,7 +172,7 @@ const EmployeePortal = () => {
     else if (rateType === 'monthly') totalPay = Math.round((Number(emp?.monthly_rate || 0) / 22) * 100) / 100;
     else totalPay = Math.round(hoursWorked * Number(emp?.hourly_rate || 0) * 100) / 100;
 
-    await supabase.from('employee_shifts').update({
+    await kapwaClient.from('employee_shifts').update({
       clock_out: now.toISOString(), hours_worked: hoursWorked, total_pay: totalPay,
     }).eq('id', activeShift.id);
     qc.invalidateQueries({ queryKey: ['emp-shifts', empId] });
@@ -181,7 +181,7 @@ const EmployeePortal = () => {
 
   const saveDisplayName = async () => {
     if (!empId) return;
-    await supabase.from('employees').update({ display_name: displayName.trim() } as any).eq('id', empId);
+    await kapwaClient.from('employees').update({ display_name: displayName.trim() } as any).eq('id', empId);
     qc.invalidateQueries({ queryKey: ['employees-active-portal'] });
     toast.success('Display name updated');
   };
@@ -421,7 +421,7 @@ function SettingsTab({ empId, empName, emp, displayName, setDisplayName, saveDis
     setPinLoading(true);
     try {
       // Verify current PIN first
-      const verifyRes = await supabase.functions.invoke('employee-auth', {
+      const verifyRes = await kapwaClient.functions.invoke('employee-auth', {
         body: { action: 'change-pin', employee_id: empId, name: empName, old_pin: currentPin, new_pin: newPin },
       });
       if (verifyRes.data?.error) {

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -74,7 +74,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-all'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('*').order('name');
+      const { data } = await kapwaClient.from('employees').select('*').order('name');
       return data || [];
     },
   });
@@ -82,7 +82,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: shifts = [] } = useQuery({
     queryKey: ['employee-shifts-all'],
     queryFn: async () => {
-      const { data } = await supabase.from('employee_shifts').select('*').order('clock_in', { ascending: false }).limit(500);
+      const { data } = await kapwaClient.from('employee_shifts').select('*').order('clock_in', { ascending: false }).limit(500);
       return data || [];
     },
   });
@@ -91,7 +91,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: payments = [] } = useQuery({
     queryKey: ['payroll-payments'],
     queryFn: async () => {
-      const { data } = await supabase.from('payroll_payments').select('*').order('paid_at', { ascending: false }).limit(200);
+      const { data } = await kapwaClient.from('payroll_payments').select('*').order('paid_at', { ascending: false }).limit(200);
       return data || [];
     },
   });
@@ -100,14 +100,14 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: bonuses = [] } = useQuery({
     queryKey: ['employee-bonuses'],
     queryFn: async () => {
-      const { data } = await (supabase.from('employee_bonuses' as any) as any).select('*').order('created_at', { ascending: false });
+      const { data } = await (kapwaClient.from('employee_bonuses' as any) as any).select('*').order('created_at', { ascending: false });
       return (data || []) as any[];
     },
   });
 
   // Realtime subscriptions for payments, shifts, and bonuses
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('payroll-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payroll_payments' }, () => {
         qc.invalidateQueries({ queryKey: ['payroll-payments'] });
@@ -119,7 +119,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
         qc.invalidateQueries({ queryKey: ['employee-bonuses'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   // Payment form state
@@ -237,7 +237,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       monthly_rate: newRateType === 'monthly' ? rateVal : 0,
       messenger_link: newMessenger.trim(),
     };
-    await supabase.from('employees').insert(insertData as any);
+    await kapwaClient.from('employees').insert(insertData as any);
     setNewName(''); setNewRate(''); setNewRateType('hourly'); setNewMessenger('');
     qc.invalidateQueries({ queryKey: ['employees-all'] });
     toast.success('Employee added');
@@ -253,19 +253,19 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       daily_rate: editRateType === 'daily' ? rateVal : (employees.find(e => e.id === editingId) as any)?.daily_rate || 0,
       monthly_rate: editRateType === 'monthly' ? rateVal : (employees.find(e => e.id === editingId) as any)?.monthly_rate || 0,
     };
-    await supabase.from('employees').update(updateData as any).eq('id', editingId);
+    await kapwaClient.from('employees').update(updateData as any).eq('id', editingId);
     setEditingId(null);
     qc.invalidateQueries({ queryKey: ['employees-all'] });
     toast.success('Employee updated');
   };
 
   const toggleActive = async (id: string, active: boolean) => {
-    await supabase.from('employees').update({ active }).eq('id', id);
+    await kapwaClient.from('employees').update({ active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['employees-all'] });
   };
 
   const deleteEmployee = async (id: string) => {
-    await supabase.from('employees').delete().eq('id', id);
+    await kapwaClient.from('employees').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['employees-all'] });
     toast.success('Employee deleted');
   };
@@ -275,7 +275,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     const empName = getEmployeeName(shift.employee_id);
     const clockInDate = format(new Date(shift.clock_in), 'MMM d, yyyy');
     const hours = shift.hours_worked ? Number(shift.hours_worked).toFixed(1) : '0';
-    await (supabase.from('resort_ops_expenses') as any).insert({
+    await (kapwaClient.from('resort_ops_expenses') as any).insert({
       expense_date: format(new Date(), 'yyyy-MM-dd'),
       name: `Shift Pay - ${empName}`,
       category: 'Labor/Staff',
@@ -293,13 +293,13 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const unsyncShiftExpense = async (shiftId: string) => {
-    await (supabase.from('resort_ops_expenses') as any)
+    await (kapwaClient.from('resort_ops_expenses') as any)
       .delete()
       .eq('notes', `[shift:${shiftId}]`);
   };
 
   const markPaid = async (shiftId: string) => {
-    await supabase.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', shiftId);
+    await kapwaClient.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', shiftId);
     const shift = shifts.find(s => s.id === shiftId);
     if (shift?.total_pay) await syncShiftToExpense(shift);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
@@ -307,7 +307,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const markUnpaid = async (shiftId: string) => {
-    await supabase.from('employee_shifts').update({ is_paid: false, paid_at: null }).eq('id', shiftId);
+    await kapwaClient.from('employee_shifts').update({ is_paid: false, paid_at: null }).eq('id', shiftId);
     await unsyncShiftExpense(shiftId);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('Marked as unpaid');
@@ -316,7 +316,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const markAllPaid = async (employeeId: string) => {
     const unpaid = filteredShifts.filter(s => s.employee_id === employeeId && !s.is_paid && s.total_pay);
     for (const s of unpaid) {
-      await supabase.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', s.id);
+      await kapwaClient.from('employee_shifts').update({ is_paid: true, paid_at: new Date().toISOString() }).eq('id', s.id);
       await syncShiftToExpense(s);
     }
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
@@ -325,7 +325,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const deleteShift = async (shiftId: string) => {
     await unsyncShiftExpense(shiftId);
-    await supabase.from('employee_shifts').delete().eq('id', shiftId);
+    await kapwaClient.from('employee_shifts').delete().eq('id', shiftId);
     qc.invalidateQueries({ queryKey: ['employee-shifts-all'] });
     toast.success('Shift deleted');
   };
@@ -347,7 +347,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       const emp = employees.find(e => e.id === shift.employee_id);
       totalPay = calculateShiftPay(emp, hoursWorked, shift.employee_id);
     }
-    await supabase.from('employee_shifts').update({
+    await kapwaClient.from('employee_shifts').update({
       clock_in: clockIn.toISOString(),
       clock_out: clockOut?.toISOString() || null,
       hours_worked: hoursWorked,
@@ -377,7 +377,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       const emp = employees.find(e => e.id === newShiftEmployee);
       totalPay = calculateShiftPay(emp, hoursWorked, newShiftEmployee);
     }
-    await supabase.from('employee_shifts').insert({
+    await kapwaClient.from('employee_shifts').insert({
       employee_id: newShiftEmployee,
       clock_in: clockIn.toISOString(),
       clock_out: clockOut?.toISOString() || null,
@@ -396,7 +396,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const addBonus = async () => {
     if (!bonusEmployee || !bonusAmount) return;
     const amount = bonusIsEOM ? (parseFloat(bonusAmount) || Number(payrollSettings?.eom_bonus_amount || 0)) : parseFloat(bonusAmount) || 0;
-    await (supabase.from('employee_bonuses' as any) as any).insert({
+    await (kapwaClient.from('employee_bonuses' as any) as any).insert({
       employee_id: bonusEmployee,
       amount,
       reason: bonusReason.trim() || (bonusIsEOM ? 'Employee of the Month' : ''),
@@ -409,7 +409,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const deleteBonus = async (id: string) => {
-    await (supabase.from('employee_bonuses' as any) as any).delete().eq('id', id);
+    await (kapwaClient.from('employee_bonuses' as any) as any).delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['employee-bonuses'] });
     toast.success('Bonus deleted');
   };
@@ -503,7 +503,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     const periodEnd = format(payPeriod.periodEnd, 'yyyy-MM-dd');
     const notes = payNotes.trim();
 
-    const { data: inserted } = await (supabase.from('payroll_payments') as any).insert({
+    const { data: inserted } = await (kapwaClient.from('payroll_payments') as any).insert({
       employee_id: payEmployee,
       amount,
       bonus_amount: 0,
@@ -517,7 +517,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     // Auto-sync to resort_ops_expenses
     if (inserted?.id) {
       const desc = `${payType === 'advance' ? 'Advance' : 'Regular'} pay ${periodStart} to ${periodEnd}${notes ? ' - ' + notes : ''}`;
-      await (supabase.from('resort_ops_expenses') as any).insert({
+      await (kapwaClient.from('resort_ops_expenses') as any).insert({
         expense_date: format(new Date(), 'yyyy-MM-dd'),
         name: `Payroll - ${empName}`,
         category: 'Labor/Staff',
@@ -542,18 +542,18 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const updatePayment = async (id: string) => {
     const amount = parseFloat(editPayAmount) || 0;
-    await supabase.from('payroll_payments').update({
+    await kapwaClient.from('payroll_payments').update({
       amount,
       notes: editPayNotes.trim(),
     }).eq('id', id);
 
     // Sync update to linked resort_ops_expense
-    const { data: linkedExpenses } = await (supabase.from('resort_ops_expenses') as any)
+    const { data: linkedExpenses } = await (kapwaClient.from('resort_ops_expenses') as any)
       .select('id')
       .eq('notes', `[payroll:${id}]`)
       .limit(1);
     if (linkedExpenses && linkedExpenses.length > 0) {
-      await (supabase.from('resort_ops_expenses') as any)
+      await (kapwaClient.from('resort_ops_expenses') as any)
         .update({ amount })
         .eq('id', linkedExpenses[0].id);
     }
@@ -570,11 +570,11 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       return;
     }
     // Delete linked resort_ops_expense first
-    await (supabase.from('resort_ops_expenses') as any)
+    await (kapwaClient.from('resort_ops_expenses') as any)
       .delete()
       .eq('notes', `[payroll:${id}]`);
 
-    await supabase.from('payroll_payments').delete().eq('id', id);
+    await kapwaClient.from('payroll_payments').delete().eq('id', id);
     setConfirmDeletePayment(null);
     qc.invalidateQueries({ queryKey: ['payroll-payments'] });
     toast.success('Payment deleted');
@@ -705,8 +705,8 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                         {(emp as any).whatsapp_number && (
                           <button
                             onClick={async () => {
-                              const { data: tasks } = await supabase.from('employee_tasks').select('title, status, due_date').eq('employee_id', emp.id);
-                              const { data: shiftData } = await supabase.from('employee_shifts').select('clock_in, clock_out, hours_worked').eq('employee_id', emp.id).order('clock_in', { ascending: false }).limit(5);
+                              const { data: tasks } = await kapwaClient.from('employee_tasks').select('title, status, due_date').eq('employee_id', emp.id);
+                              const { data: shiftData } = await kapwaClient.from('employee_shifts').select('clock_in, clock_out, hours_worked').eq('employee_id', emp.id).order('clock_in', { ascending: false }).limit(5);
                               const msg = buildTeamWhatsAppMessage(
                                 (emp as any).display_name || emp.name,
                                 tasks || [],
@@ -770,7 +770,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                     <Button size="sm" className="font-display text-xs tracking-wider h-8 flex-1" disabled={pinValue.length < 4 || !adminPinValue}
                       onClick={async () => {
                         const admin = getStaffSession();
-                        const { data, error } = await supabase.functions.invoke('employee-auth', {
+                        const { data, error } = await kapwaClient.functions.invoke('employee-auth', {
                           body: {
                             action: 'set-password',
                             employee_id: emp.id,
@@ -800,7 +800,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                   <div className="flex gap-2">
                     <Button size="sm" className="font-display text-xs tracking-wider h-8 flex-1"
                       onClick={async () => {
-                        await supabase.from('employees').update({ phone: editPhone.trim(), messenger_link: editMessenger.trim(), whatsapp_number: editWhatsapp.trim() } as any).eq('id', emp.id);
+                        await kapwaClient.from('employees').update({ phone: editPhone.trim(), messenger_link: editMessenger.trim(), whatsapp_number: editWhatsapp.trim() } as any).eq('id', emp.id);
                         setContactEditId(null);
                         qc.invalidateQueries({ queryKey: ['employees-all'] });
                         toast.success('Contact info saved');
@@ -1336,7 +1336,7 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                     </div>
                     <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive h-7"
                       onClick={async () => {
-                        await (supabase.from('employee_bonuses' as any) as any).delete().eq('id', currentEOM.id);
+                        await (kapwaClient.from('employee_bonuses' as any) as any).delete().eq('id', currentEOM.id);
                         qc.invalidateQueries({ queryKey: ['employee-bonuses'] });
                         toast.success('Employee of the Month removed');
                       }}>
@@ -1374,10 +1374,10 @@ const PayrollDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
                 const existing = bonuses.find((b: any) => b.is_employee_of_month && b.bonus_month === monthStr);
                 if (existing) {
                   // Replace: delete old, add new
-                  await (supabase.from('employee_bonuses' as any) as any).delete().eq('id', existing.id);
+                  await (kapwaClient.from('employee_bonuses' as any) as any).delete().eq('id', existing.id);
                 }
                 const amount = Number(payrollSettings?.eom_bonus_amount || 0);
-                await (supabase.from('employee_bonuses' as any) as any).insert({
+                await (kapwaClient.from('employee_bonuses' as any) as any).insert({
                   employee_id: eomEmployeeId,
                   amount,
                   reason: 'Employee of the Month',

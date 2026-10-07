@@ -224,9 +224,8 @@ kapwa-resort-webapp/
 │   │   ├── cart.ts                               # Zustand cart store
 │   │   └── imageCompress.ts                      # Client-side receipt/photo compression before upload
 │   │
-│   └── integrations/supabase/
-│       ├── client.ts                             # Re-exports `kapwaClient` as `supabase` for seamless compatibility
-│       └── types.ts                              # Full TypeScript schema definitions for all tables
+│   └── types/
+│       └── database.ts                           # Full TypeScript schema definitions for all tables
 │
 ├── voice-agent/                                  # Python LiveKit Voice AI Agent (TALA Voice)
 │   ├── docker-compose.yml                        # Multi-container orchestration (Voice Agent + Token Server + PWA)
@@ -236,7 +235,7 @@ kapwa-resort-webapp/
 │   │   ├── orchestrator.py                       # Multi-step tool execution orchestrator
 │   │   ├── persona.py                            # TALA Taglish warm hospitality voice persona
 │   │   ├── config.py                             # Environment loader (KAPWA_API_URL, DATABASE_URL, LiveKit keys)
-│   │   ├── supabase_client.py                    # Standalone KAPWA HTTP/Neon query client (zero supabase-py dependency)
+│   │   ├── kapwa_client.py                       # Standalone KAPWA HTTP/Neon query client
 │   │   ├── tool_registry.py                      # Voice tool registration
 │   │   ├── token_server.py                       # LiveKit room token issuer
 │   │   ├── loops/                                # Planner, execution, verification & repair loops
@@ -315,7 +314,7 @@ kapwa-resort-webapp/
 3. **Ops Coordinator (`ops-coordinator` in `server/services/functions.js`)**
    -Synthesizes morning, evening, and daily executive briefings in Philippine Peso (`₱`) and proposes one-click actions (`escalate_guest_request`, `create_task`, `create_housekeeping_order`).
 4. **TALA Voice Agent (`voice-agent/agent/`)**
-   - Real-time WebRTC voice concierge built on LiveKit Agents, Deepgram Nova-2 STT, OpenAI GPT-4o, and ElevenLabs Turbo v2.5 TTS, connected to the KAPWA backend via `voice-agent/agent/supabase_client.py`.
+   - Real-time WebRTC voice concierge built on LiveKit Agents, Deepgram Nova-2 STT, OpenAI GPT-4o, and ElevenLabs Turbo v2.5 TTS, connected to the KAPWA backend via `voice-agent/agent/kapwa_client.py`.
 
 ---
 

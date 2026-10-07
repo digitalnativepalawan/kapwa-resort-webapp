@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Lock, LogOut } from 'lucide-react';
@@ -60,7 +60,7 @@ const AdminLoginGate = ({ children }: AdminLoginGateProps) => {
     if (!loginName.trim() || !loginPin) return;
     setLoading(true);
     try {
-      const res = await supabase.functions.invoke('employee-auth', {
+      const res = await kapwaClient.functions.invoke('employee-auth', {
         body: { action: 'admin-verify', name: loginName.trim(), pin: loginPin },
       });
       const data = res.data;

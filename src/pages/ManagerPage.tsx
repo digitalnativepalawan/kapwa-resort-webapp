@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft } from 'lucide-react';
@@ -54,7 +54,7 @@ const ManagerPage = () => {
     queryKey: ['manager-permissions', empId],
     enabled: !!empId,
     queryFn: async () => {
-      const { data } = await (supabase.from('employee_permissions' as any) as any)
+      const { data } = await (kapwaClient.from('employee_permissions' as any) as any)
         .select('permission').eq('employee_id', empId!);
       return ((data || []) as any[]).map((p: any) => p.permission as string);
     },
@@ -67,7 +67,7 @@ const ManagerPage = () => {
     queryKey: ['orders-manager'],
     enabled: hasAccess(permissions, 'orders'),
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
+      const { data } = await kapwaClient.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
     },
   });
@@ -77,7 +77,7 @@ const ManagerPage = () => {
     queryKey: ['menu-items-manager'],
     enabled: hasAccess(permissions, 'menu'),
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('*').order('category').order('sort_order');
+      const { data } = await kapwaClient.from('menu_items').select('*').order('category').order('sort_order');
       return data || [];
     },
   });
@@ -85,13 +85,13 @@ const ManagerPage = () => {
   // Realtime
   useEffect(() => {
     if (!hasAccess(permissions, 'orders')) return;
-    const channel = supabase
+    const channel = kapwaClient
       .channel('manager-orders-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['orders-manager'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [permissions, qc]);
 
   const [activeStatus, setActiveStatus] = useState('New');
@@ -110,7 +110,7 @@ const ManagerPage = () => {
   const advanceOrder = async (orderId: string, nextStatus: string) => {
     const updateData: any = { status: nextStatus };
     if (nextStatus === 'Closed') updateData.closed_at = new Date().toISOString();
-    await supabase.from('orders').update(updateData).eq('id', orderId);
+    await kapwaClient.from('orders').update(updateData).eq('id', orderId);
     if (nextStatus === 'Preparing') {
       const order = orders.find(o => o.id === orderId);
       if (order) {
@@ -123,7 +123,7 @@ const ManagerPage = () => {
   };
 
   const toggleMenuAvailability = async (itemId: string, available: boolean) => {
-    await supabase.from('menu_items').update({ available } as any).eq('id', itemId);
+    await kapwaClient.from('menu_items').update({ available } as any).eq('id', itemId);
     qc.invalidateQueries({ queryKey: ['menu-items-manager'] });
     toast.success(available ? 'Item available' : 'Item unavailable');
   };

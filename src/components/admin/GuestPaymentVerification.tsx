@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { getStaffSession } from '@/lib/session';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ const GuestPaymentVerification = () => {
   const { data: submissions = [] } = useQuery({
     queryKey: ['guest-payment-submissions'],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_payment_submissions') as any)
+      const { data } = await (kapwaClient.from('guest_payment_submissions') as any)
         .select('*').order('created_at', { ascending: false }).limit(50);
       return data || [];
     },
@@ -30,7 +30,7 @@ const GuestPaymentVerification = () => {
     const staff = getStaffSession();
     const reviewer = staff?.name || 'Admin';
     try {
-      const { error } = await (supabase.from('guest_payment_submissions') as any).update({
+      const { error } = await (kapwaClient.from('guest_payment_submissions') as any).update({
         status,
         reviewed_by: reviewer,
         reviewed_at: new Date().toISOString(),
@@ -40,7 +40,7 @@ const GuestPaymentVerification = () => {
 
       if (status === 'verified' && Number(row.amount) > 0) {
         // Post the payment to the room ledger so the guest bill balance drops
-        await (supabase.from('room_transactions') as any).insert({
+        await (kapwaClient.from('room_transactions') as any).insert({
           unit_id: row.room_id || null,
           unit_name: row.unit_name || '',
           guest_name: row.guest_name || '',

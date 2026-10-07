@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -47,7 +47,7 @@ const AccountingExport = () => {
       const zip = new JSZip();
 
       // Orders
-      const { data: orders = [] } = await supabase
+      const { data: orders = [] } = await kapwaClient
         .from('orders')
         .select('*')
         .gte('created_at', from)
@@ -60,7 +60,7 @@ const AccountingExport = () => {
       ));
 
       // Tabs
-      const { data: tabs = [] } = await (supabase.from('tabs') as any)
+      const { data: tabs = [] } = await (kapwaClient.from('tabs') as any)
         .select('*')
         .gte('created_at', from)
         .lte('created_at', to)
@@ -72,7 +72,7 @@ const AccountingExport = () => {
       ));
 
       // Guest Tours / Experiences
-      const { data: tours = [] } = await supabase
+      const { data: tours = [] } = await kapwaClient
         .from('guest_tours')
         .select('*')
         .gte('created_at', from)
@@ -85,7 +85,7 @@ const AccountingExport = () => {
       ));
 
       // Guest Requests
-      const { data: requests = [] } = await supabase
+      const { data: requests = [] } = await kapwaClient
         .from('guest_requests')
         .select('*')
         .gte('created_at', from)
@@ -98,7 +98,7 @@ const AccountingExport = () => {
       ));
 
       // Housekeeping
-      const { data: hk = [] } = await supabase
+      const { data: hk = [] } = await kapwaClient
         .from('housekeeping_orders')
         .select('*')
         .gte('created_at', from)
@@ -111,7 +111,7 @@ const AccountingExport = () => {
       ));
 
       // Tasks (including archived)
-      const { data: tasks = [] } = await (supabase.from('employee_tasks') as any)
+      const { data: tasks = [] } = await (kapwaClient.from('employee_tasks') as any)
         .select('*')
         .gte('created_at', from)
         .lte('created_at', to)
@@ -123,7 +123,7 @@ const AccountingExport = () => {
       ));
 
       // Bookings
-      const { data: bookings = [] } = await supabase
+      const { data: bookings = [] } = await kapwaClient
         .from('resort_ops_bookings')
         .select('*')
         .gte('created_at', from)
@@ -136,7 +136,7 @@ const AccountingExport = () => {
       ));
 
       // Resort Ops Expenses
-      const { data: expenses = [] } = await supabase
+      const { data: expenses = [] } = await kapwaClient
         .from('resort_ops_expenses')
         .select('*')
         .gte('expense_date', format(dateFrom, 'yyyy-MM-dd'))
@@ -210,7 +210,7 @@ const AccountingExport = () => {
           const id = cols[idIdx];
           const archivedAt = cols[archivedIdx];
           if (id && archivedAt) {
-            await (supabase.from('employee_tasks') as any).update({ archived_at: null }).eq('id', id);
+            await (kapwaClient.from('employee_tasks') as any).update({ archived_at: null }).eq('id', id);
             restored++;
           }
         }

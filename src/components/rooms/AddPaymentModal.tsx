@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { logAudit } from '@/lib/auditLog';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -35,7 +35,7 @@ const AddPaymentModal = ({ open, onOpenChange, unitId, unitName, guestName, book
     if (!method) { toast.error('Select a payment method'); return; }
     setSubmitting(true);
     try {
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unitId,
         unit_name: unitName,
         guest_name: guestName,

@@ -1,7 +1,7 @@
 /**
  * KAPWA Hospitality OS — Independent File Storage Service
  *
- * Replaces Supabase Storage (`supabase.storage.from(bucket).upload / getPublicUrl / remove`).
+ * Replaces KAPWA Storage (`db.storage.from(bucket).upload / getPublicUrl / remove`).
  * Stores files on local disk under `server/storage/<bucket>/<path>` (configurable via
  * `KAPWA_STORAGE_DIR`) and serves public assets at `/api/storage/public/:bucket/*`.
  */

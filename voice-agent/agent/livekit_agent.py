@@ -43,7 +43,7 @@ from agent.config import load_settings
 from agent.memory.guest_memory import load_guest_memory, memory_to_prompt_block, upsert_guest_memory
 from agent.persona import TALA_SYSTEM_PROMPT
 from agent.tool_registry import TOOL_FUNCTIONS
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 from agent.loops.repair import ESCALATION_MESSAGE, CLARIFICATION_MESSAGE
 
 logging.basicConfig(level=logging.INFO)
@@ -55,7 +55,7 @@ _settings = load_settings()
 class TalaAgent(Agent):
     """
     TALA's tool surface. Each @function_tool method is intentionally a thin
-    pass-through to agent/tools/* -- the actual Supabase queries / business
+    pass-through to agent/tools/* -- the actual Neon PostgreSQL queries / business
     logic live there so they stay unit-testable without spinning up LiveKit.
     """
 

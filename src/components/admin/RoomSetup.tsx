@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,7 +13,7 @@ const RoomSetup = () => {
   const { data: roomTypes = [] } = useQuery({
     queryKey: ['room-types'],
     queryFn: async () => {
-      const { data } = await supabase.from('room_types').select('*').order('name');
+      const { data } = await kapwaClient.from('room_types').select('*').order('name');
       return (data || []) as any[];
     },
   });
@@ -21,7 +21,7 @@ const RoomSetup = () => {
   const { data: units = [] } = useQuery({
     queryKey: ['units-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').order('unit_name');
       return data || [];
     },
   });
@@ -32,21 +32,21 @@ const RoomSetup = () => {
 
   const addRoomType = async () => {
     if (!newRoomType.trim()) return;
-    await supabase.from('room_types').insert({ name: newRoomType.trim() });
+    await kapwaClient.from('room_types').insert({ name: newRoomType.trim() });
     setNewRoomType('');
     qc.invalidateQueries({ queryKey: ['room-types'] });
     toast.success('Room type added');
   };
 
   const deleteRoomType = async (id: string) => {
-    await supabase.from('room_types').delete().eq('id', id);
+    await kapwaClient.from('room_types').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['room-types'] });
     toast.success('Room type deleted');
   };
 
   const saveRoomTypeName = async () => {
     if (!editingRoomTypeId || !editingRoomTypeName.trim()) return;
-    await supabase.from('room_types').update({ name: editingRoomTypeName.trim() }).eq('id', editingRoomTypeId);
+    await kapwaClient.from('room_types').update({ name: editingRoomTypeName.trim() }).eq('id', editingRoomTypeId);
     setEditingRoomTypeId(null);
     setEditingRoomTypeName('');
     qc.invalidateQueries({ queryKey: ['room-types'] });
@@ -54,7 +54,7 @@ const RoomSetup = () => {
   };
 
   const assignRoomType = async (unitId: string, roomTypeId: string | null) => {
-    await supabase.from('units').update({ room_type_id: roomTypeId } as any).eq('id', unitId);
+    await kapwaClient.from('units').update({ room_type_id: roomTypeId } as any).eq('id', unitId);
     qc.invalidateQueries({ queryKey: ['units-admin'] });
     toast.success('Room type assigned');
   };
@@ -99,7 +99,7 @@ const RoomSetup = () => {
                       onBlur={async (e) => {
                         const val = parseFloat(e.target.value) || 0;
                         if (val !== (rt.base_rate || 0)) {
-                          await supabase.from('room_types').update({ base_rate: val } as any).eq('id', rt.id);
+                          await kapwaClient.from('room_types').update({ base_rate: val } as any).eq('id', rt.id);
                           qc.invalidateQueries({ queryKey: ['room-types'] });
                           toast.success('Rate updated');
                         }

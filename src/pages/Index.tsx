@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useResortProfile } from '@/hooks/useResortProfile';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -45,7 +45,7 @@ const Index = () => {
     let employeeId = 'dev-admin';
     let empName = 'Dev Admin';
     try {
-      const { data } = await supabase.functions.invoke('employee-auth', {
+      const { data } = await kapwaClient.functions.invoke('employee-auth', {
         body: { action: 'admin-verify', name: 'David', pin: '5309' },
       });
       if (data?.token) {
@@ -73,7 +73,7 @@ const Index = () => {
 
     try {
       const action = mode === 'admin' ? 'admin-verify' : 'verify';
-      const { data, error } = await supabase.functions.invoke('employee-auth', {
+      const { data, error } = await kapwaClient.functions.invoke('employee-auth', {
         body: { action, name: name.trim(), pin },
       });
 

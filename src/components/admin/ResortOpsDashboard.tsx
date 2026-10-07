@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +48,7 @@ export const computeVatFields = (vatStatus: string, totalAmount: number) => {
   }
 };
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const EMPTY_EXPENSE = {
   name: '',
@@ -162,9 +162,9 @@ const ExpenseFormFields = ({ data, onChange, scannedFields, scanningReceipt, onS
                 const ext = file.name.split('.').pop() || 'jpg';
                 const path = `expenses/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
                 toast.loading('Uploading receipt...', { id: 'receipt-upload' });
-                const { error } = await supabase.storage.from('receipts').upload(path, file);
+                const { error } = await kapwaClient.storage.from('receipts').upload(path, file);
                 if (error) { toast.error(`Upload failed: ${error.message}`, { id: 'receipt-upload' }); return; }
-                const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
+                const { data: urlData } = kapwaClient.storage.from('receipts').getPublicUrl(path);
                 onChange({...data, image_url: urlData.publicUrl});
                 toast.success('Receipt uploaded', { id: 'receipt-upload' });
               }}
@@ -269,7 +269,7 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     queryKey: ['resort-ops-orders', dateFrom, dateTo],
     queryFn: async () => {
       if (!dateFrom || !dateTo) return [];
-      const { data } = await supabase.from('orders').select('*')
+      const { data } = await kapwaClient.from('orders').select('*')
         .gte('created_at', dateFrom)
         .lte('created_at', dateTo + 'T23:59:59');
       return data || [];
@@ -278,7 +278,7 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   });
   const { data: menuItems = [] } = useQuery({
     queryKey: ['resort-ops-menu'],
-    queryFn: async () => { const { data } = await supabase.from('menu_items').select('*'); return data || []; },
+    queryFn: async () => { const { data } = await kapwaClient.from('menu_items').select('*'); return data || []; },
   });
 
   // ── Filtered data ──
@@ -428,12 +428,12 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       if (booking?.unit_id) {
         const resortUnit = (units as any[]).find((u) => u.id === booking.unit_id);
         if (resortUnit) {
-          const displayUnit = await supabase.from('units' as any).select('id, status').ilike('unit_name', resortUnit.name.trim()).limit(1);
+          const displayUnit = await kapwaClient.from('units' as any).select('id, status').ilike('unit_name', resortUnit.name.trim()).limit(1);
           const dUnit = (displayUnit.data as any)?.[0];
           if (dUnit && (dUnit.status === 'occupied' || dUnit.status === 'to_clean')) {
             const otherActive = (bookings as any[]).find((b: any) => b.id !== id && b.unit_id === booking.unit_id && b.check_in <= new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) && b.check_out > new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }));
             if (!otherActive) {
-              await supabase.from('units' as any).update({ status: 'ready' } as any).eq('id', dUnit.id);
+              await kapwaClient.from('units' as any).update({ status: 'ready' } as any).eq('id', dUnit.id);
             }
           }
         }
@@ -626,9 +626,9 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       
       toast.loading('Uploading & scanning receipt...', { id: 'receipt-scan' });
       
-      const { error: uploadError } = await supabase.storage.from('receipts').upload(storagePath, file);
+      const { error: uploadError } = await kapwaClient.storage.from('receipts').upload(storagePath, file);
       if (uploadError) { toast.error(`Upload failed: ${uploadError.message}`, { id: 'receipt-scan' }); return; }
-      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(storagePath);
+      const { data: urlData } = kapwaClient.storage.from('receipts').getPublicUrl(storagePath);
 
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -637,7 +637,7 @@ const ResortOpsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
         reader.readAsDataURL(file);
       });
 
-      const { data: scanResult, error: fnError } = await supabase.functions.invoke('scan-receipt', {
+      const { data: scanResult, error: fnError } = await kapwaClient.functions.invoke('scan-receipt', {
         body: { image_base64: base64 },
       });
 

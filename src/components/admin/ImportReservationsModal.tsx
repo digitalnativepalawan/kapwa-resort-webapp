@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Download, Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { shouldTreatBookingAsOccupiedWithoutManualCheckIn } from '@/lib/receptionOccupancy';
 import { toast } from 'sonner';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 interface Props {
   open: boolean;
@@ -500,8 +500,8 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
 
     try {
       const [displayUnitsRes, roomTypesRes, existingBookingsRes] = await Promise.all([
-        supabase.from('units').select('id, unit_name, status, room_type_id, active'),
-        supabase.from('room_types').select('id, name'),
+        kapwaClient.from('units').select('id, unit_name, status, room_type_id, active'),
+        kapwaClient.from('room_types').select('id, name'),
         from('resort_ops_bookings')
           .select('external_reservation_id')
           .in('external_reservation_id', selectedRows.map((row) => row.externalReservationId).filter(Boolean)),
@@ -625,7 +625,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
               };
               if (roomTypeId) unitInsert.room_type_id = roomTypeId;
 
-              const { data: newDisplayUnit, error: displayUnitError } = await supabase
+              const { data: newDisplayUnit, error: displayUnitError } = await kapwaClient
                 .from('units')
                 .insert(unitInsert as any)
                 .select('id, unit_name, status, room_type_id, active')
@@ -641,7 +641,7 @@ const ImportReservationsModal = ({ open, onOpenChange, guests, units, onComplete
               if (displayUnit.active === false) unitPatch.active = true;
 
               if (Object.keys(unitPatch).length > 0) {
-                const { data: updatedUnit, error: displayUnitUpdateError } = await supabase
+                const { data: updatedUnit, error: displayUnitUpdateError } = await kapwaClient
                   .from('units')
                   .update(unitPatch as any)
                   .eq('id', displayUnit.id)

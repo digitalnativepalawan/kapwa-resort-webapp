@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -72,17 +72,17 @@ const VibeCheckInForm = ({ unitName, onClose, existingRecord }: Props) => {
 
     if (existingRecord) {
       // Save vibe update history
-      await (supabase.from('vibe_updates' as any) as any).insert({
+      await (kapwaClient.from('vibe_updates' as any) as any).insert({
         vibe_record_id: existingRecord.id,
         updated_fields: payload,
         notes: 'Updated vibe profile',
       });
-      await (supabase.from('guest_vibe_records' as any) as any)
+      await (kapwaClient.from('guest_vibe_records' as any) as any)
         .update({ ...payload, updated_at: new Date().toISOString() })
         .eq('id', existingRecord.id);
       toast.success('Vibe record updated');
     } else {
-      await (supabase.from('guest_vibe_records' as any) as any).insert(payload);
+      await (kapwaClient.from('guest_vibe_records' as any) as any).insert(payload);
       toast.success('Vibe check-in saved');
     }
 

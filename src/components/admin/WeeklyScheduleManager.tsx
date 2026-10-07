@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ type TimelineSchedule = Schedule & {
   continues_to_next?: boolean;
 };
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const TIMELINE_START = 0;
 const TIMELINE_END = 24;
@@ -135,7 +135,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees-schedule'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('id, name').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('id, name').eq('active', true).order('name');
       return (data || []) as Employee[];
     },
   });
@@ -156,7 +156,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const { data: schedules = [] } = useQuery<Schedule[]>({
     queryKey: ['weekly-schedules', startStr],
     queryFn: async () => {
-      const { data } = await supabase.from('weekly_schedules').select('*')
+      const { data } = await kapwaClient.from('weekly_schedules').select('*')
         .gte('schedule_date', fetchStartStr).lte('schedule_date', endStr);
       return (data || []) as Schedule[];
     },
@@ -165,7 +165,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const { data: weekTasks = [] } = useQuery<Task[]>({
     queryKey: ['week-tasks', startStr],
     queryFn: async () => {
-      const { data } = await supabase.from('employee_tasks').select('*')
+      const { data } = await kapwaClient.from('employee_tasks').select('*')
         .gte('due_date', startStr + 'T00:00:00')
         .lte('due_date', endStr + 'T23:59:59');
       return (data || []) as Task[];
@@ -175,7 +175,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const { data: undatedTasks = [] } = useQuery<Task[]>({
     queryKey: ['undated-tasks'],
     queryFn: async () => {
-      const { data } = await supabase.from('employee_tasks').select('*')
+      const { data } = await kapwaClient.from('employee_tasks').select('*')
         .is('due_date', null)
         .neq('status', 'completed');
       return (data || []) as Task[];
@@ -234,7 +234,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   };
 
   useEffect(() => {
-    const ch = supabase.channel('schedules-rt')
+    const ch = kapwaClient.channel('schedules-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'weekly_schedules' }, () => {
         qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
       })
@@ -248,7 +248,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'housekeeping_orders' }, () => {
         qc.invalidateQueries({ queryKey: ['week-hk-orders'] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { kapwaClient.removeChannel(ch); };
   }, [qc]);
 
   const empMap = useMemo(() => {
@@ -303,7 +303,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
       if (checkOverlap(shiftForm.employee_id, shiftForm.schedule_date, shiftForm.time_in, shiftForm.time_out, shiftModal.schedule.id)) {
         toast.warning('This shift overlaps with an existing shift for this employee');
       }
-      await supabase.from('weekly_schedules').update({
+      await kapwaClient.from('weekly_schedules').update({
         employee_id: shiftForm.employee_id, schedule_date: shiftForm.schedule_date,
         time_in: shiftForm.time_in, time_out: shiftForm.time_out,
       }).eq('id', shiftModal.schedule.id);
@@ -323,7 +323,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
         });
       });
       if (overlapCount > 0) toast.warning(`${overlapCount} shift(s) overlap with existing shifts`);
-      await supabase.from('weekly_schedules').insert(rows);
+      await kapwaClient.from('weekly_schedules').insert(rows);
       toast.success(`${rows.length} shift(s) added`);
     }
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
@@ -337,7 +337,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 
   const addBrokenShift = async () => {
     if (!shiftForm.employee_id || !shiftForm.schedule_date) return;
-    await supabase.from('weekly_schedules').insert([
+    await kapwaClient.from('weekly_schedules').insert([
       { employee_id: shiftForm.employee_id, schedule_date: shiftForm.schedule_date, time_in: '07:00', time_out: '11:00' },
       { employee_id: shiftForm.employee_id, schedule_date: shiftForm.schedule_date, time_in: '17:00', time_out: '21:00' },
     ]);
@@ -354,7 +354,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
     }
 
     setDeleteId(null);
-    const { error } = await supabase.from('weekly_schedules').delete().eq('id', idToDelete);
+    const { error } = await kapwaClient.from('weekly_schedules').delete().eq('id', idToDelete);
     if (error) {
       toast.error(`Failed to delete shift: ${error.message}`);
       return;
@@ -366,7 +366,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 
   const duplicateShift = async (s: Schedule) => {
     const nextDate = format(addDays(new Date(s.schedule_date + 'T00:00:00'), 1), 'yyyy-MM-dd');
-    await supabase.from('weekly_schedules').insert({
+    await kapwaClient.from('weekly_schedules').insert({
       employee_id: s.employee_id, schedule_date: nextDate,
       time_in: s.time_in.slice(0, 5), time_out: s.time_out.slice(0, 5),
     });
@@ -377,7 +377,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
   const copyPreviousWeek = async () => {
     const prevStart = format(addDays(weekStart, -7), 'yyyy-MM-dd');
     const prevEnd = format(addDays(weekStart, -1), 'yyyy-MM-dd');
-    const { data: prevSchedules } = await supabase.from('weekly_schedules').select('*')
+    const { data: prevSchedules } = await kapwaClient.from('weekly_schedules').select('*')
       .gte('schedule_date', prevStart).lte('schedule_date', prevEnd);
     if (!prevSchedules?.length) { toast.error('No shifts found in previous week'); return; }
     const newShifts = prevSchedules.map(s => ({
@@ -385,7 +385,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
       schedule_date: format(addDays(new Date(s.schedule_date + 'T00:00:00'), 7), 'yyyy-MM-dd'),
       time_in: s.time_in.slice(0, 5), time_out: s.time_out.slice(0, 5),
     }));
-    await supabase.from('weekly_schedules').insert(newShifts);
+    await kapwaClient.from('weekly_schedules').insert(newShifts);
     toast.success(`Copied ${newShifts.length} shifts from previous week`);
     qc.invalidateQueries({ queryKey: ['weekly-schedules'] });
   };
@@ -447,7 +447,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
         cleaning_notes: taskForm.description || '',
       });
       // Also create an employee_task for visibility
-      await supabase.from('employee_tasks').insert({
+      await kapwaClient.from('employee_tasks').insert({
         employee_id: taskForm.employee_id,
         title: `Clean ${taskForm.unit_name}`,
         description: taskForm.description || `Housekeeping for ${taskForm.unit_name}`,
@@ -461,7 +461,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
         ? taskForm.title || 'Reception duty'
         : taskForm.title;
       if (!title) { toast.error('Enter a task title'); return; }
-      await supabase.from('employee_tasks').insert({
+      await kapwaClient.from('employee_tasks').insert({
         employee_id: taskForm.employee_id,
         title,
         description: taskForm.description,
@@ -479,7 +479,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
 
   // Archive task (soft delete)
   const deleteTask = async (taskId: string) => {
-    await (supabase.from('employee_tasks') as any).update({ archived_at: new Date().toISOString() }).eq('id', taskId);
+    await (kapwaClient.from('employee_tasks') as any).update({ archived_at: new Date().toISOString() }).eq('id', taskId);
     qc.invalidateQueries({ queryKey: ['week-tasks'] });
     qc.invalidateQueries({ queryKey: ['undated-tasks'] });
     toast.success('Task archived');
@@ -491,7 +491,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
     const dueDate = editTaskForm.due_date && editTaskForm.due_time
       ? `${editTaskForm.due_date}T${editTaskForm.due_time}:00`
       : editTaskForm.due_date ? `${editTaskForm.due_date}T09:00:00` : null;
-    await supabase.from('employee_tasks').update({
+    await kapwaClient.from('employee_tasks').update({
       title: editTaskForm.title,
       description: editTaskForm.description,
       due_date: dueDate,
@@ -802,7 +802,7 @@ const WeeklyScheduleManager = ({ readOnly = false }: { readOnly?: boolean }) => 
       <div className="flex gap-2 pt-1">
         {task.status !== 'completed' && (
           <Button size="sm" className="flex-1 font-display text-xs" onClick={async () => {
-            await supabase.from('employee_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', task.id);
+            await kapwaClient.from('employee_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', task.id);
             qc.invalidateQueries({ queryKey: ['week-tasks'] });
             qc.invalidateQueries({ queryKey: ['undated-tasks'] });
             setViewingTask(null);

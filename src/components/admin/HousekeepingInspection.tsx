@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import { differenceInMinutes } from 'date-fns';
 
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 interface HousekeepingInspectionProps {
   order: any;
@@ -74,7 +74,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
     queryKey: ['ingredients'],
     enabled: !isPreInspection,
     queryFn: async () => {
-      const { data } = await supabase.from('ingredients').select('*').order('name');
+      const { data } = await kapwaClient.from('ingredients').select('*').order('name');
       return data || [];
     },
   });
@@ -82,7 +82,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-active'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('id, name, display_name').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('id, name, display_name').eq('active', true).order('name');
       return data || [];
     },
   });
@@ -211,11 +211,11 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
         const ing = getIngredient(ingredientId);
         if (!ing) continue;
 
-        await supabase.from('ingredients').update({
+        await kapwaClient.from('ingredients').update({
           current_stock: Math.max(0, (ing as any).current_stock - qty),
         }).eq('id', ingredientId);
 
-        await supabase.from('inventory_logs').insert({
+        await kapwaClient.from('inventory_logs').insert({
           ingredient_id: ingredientId,
           change_qty: -qty,
           reason: `housekeeping_clean:${order.unit_name}`,
@@ -248,7 +248,7 @@ const HousekeepingInspection = ({ order, onClose, mode }: HousekeepingInspection
       } as any).eq('id', order.id);
 
       // 4. Set unit status to 'ready'
-      await supabase.from('units').update({ status: 'ready' } as any)
+      await kapwaClient.from('units').update({ status: 'ready' } as any)
         .eq('unit_name', order.unit_name);
 
       qc.invalidateQueries({ queryKey: ['housekeeping-orders'] });

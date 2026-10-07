@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useState, useMemo } from 'react';
 import { Users, Clock, MapPin, CalendarDays, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +25,7 @@ const ToursBoard = () => {
   const { data: tours = [], isLoading } = useQuery({
     queryKey: ['tours-board'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('tour_bookings')
         .select('*')
         .order('tour_date', { ascending: true })
@@ -37,7 +37,7 @@ const ToursBoard = () => {
   });
 
   const cancelTour = async (id: string) => {
-    await (supabase.from('tour_bookings') as any).update({ status: 'cancelled' }).eq('id', id);
+    await (kapwaClient.from('tour_bookings') as any).update({ status: 'cancelled' }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['tours-board'] });
     toast.success('Tour cancelled');
   };

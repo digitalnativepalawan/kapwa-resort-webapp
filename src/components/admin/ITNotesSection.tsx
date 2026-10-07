@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -36,7 +36,7 @@ const ITNotesSection = () => {
   const { data: notes = [], isLoading } = useQuery({
     queryKey: ['it-notes'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('it_notes' as any) as any)
+      const { data, error } = await (kapwaClient.from('it_notes' as any) as any)
         .select('*')
         .order('updated_at', { ascending: false });
       if (error) throw error;
@@ -91,12 +91,12 @@ const ITNotesSection = () => {
     };
 
     if (editingId) {
-      const { error } = await (supabase.from('it_notes' as any) as any)
+      const { error } = await (kapwaClient.from('it_notes' as any) as any)
         .update(payload).eq('id', editingId);
       if (error) { toast.error('Update failed'); return; }
       toast.success('Note updated');
     } else {
-      const { error } = await (supabase.from('it_notes' as any) as any)
+      const { error } = await (kapwaClient.from('it_notes' as any) as any)
         .insert(payload);
       if (error) { toast.error('Save failed'); return; }
       toast.success('Note added');
@@ -107,7 +107,7 @@ const ITNotesSection = () => {
 
   const deleteNote = async (id: string) => {
     if (!confirm('Delete this note?')) return;
-    await (supabase.from('it_notes' as any) as any).delete().eq('id', id);
+    await (kapwaClient.from('it_notes' as any) as any).delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['it-notes'] });
     toast.success('Deleted');
   };

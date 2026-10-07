@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,7 +22,7 @@ const DeviceManager = () => {
   const { data: devices = [] } = useQuery({
     queryKey: ['devices-admin'],
     queryFn: async () => {
-      const { data } = await supabase.from('devices').select('*').order('created_at', { ascending: false });
+      const { data } = await kapwaClient.from('devices').select('*').order('created_at', { ascending: false });
       return data || [];
     },
   });
@@ -32,7 +32,7 @@ const DeviceManager = () => {
       toast.error('Name and Device ID are required');
       return;
     }
-    const { error } = await supabase.from('devices').insert({
+    const { error } = await kapwaClient.from('devices').insert({
       device_name: newName.trim(),
       device_id: newDeviceId.trim(),
       department: newDept,
@@ -49,12 +49,12 @@ const DeviceManager = () => {
   };
 
   const toggleActive = async (id: string, active: boolean) => {
-    await supabase.from('devices').update({ is_active: active }).eq('id', id);
+    await kapwaClient.from('devices').update({ is_active: active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['devices-admin'] });
   };
 
   const deleteDevice = async (id: string) => {
-    await supabase.from('devices').delete().eq('id', id);
+    await kapwaClient.from('devices').delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['devices-admin'] });
     toast.success('Device deleted');
   };
@@ -66,7 +66,7 @@ const DeviceManager = () => {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    await supabase.from('devices').update({
+    await kapwaClient.from('devices').update({
       device_name: editForm.device_name,
       device_id: editForm.device_id,
       department: editForm.department,

@@ -1,17 +1,17 @@
 # TALA — Guest Voice Agent (KAPWA OS Boutique Resort)
 
 Self-hosted voice concierge: LiveKit (room transport) + Ollama/Qwen3 8B (LLM)
-+ whisper.cpp (STT) + Kokoro (TTS) + Supabase (KAPWA OS's live ops database).
++ whisper.cpp (STT) + Kokoro (TTS) + Neon PostgreSQL (KAPWA OS's live ops database).
 Zero per-minute/per-token cost — everything runs on your own hardware.
 
 Lives at `voice-agent/` inside `kapwa-backoffice`, separate from the existing
-`concierge-ai` Supabase function (that one is OpenRouter/Claude-based staff
+`concierge-ai` Neon PostgreSQL function (that one is OpenRouter/Claude-based staff
 triage — unrelated, don't touch it).
 
 ## What's real vs. what's left to wire up
 
 **Built and verified in this pass:**
-- All 12 tools (`agent/tools/*`) — real Supabase queries against KAPWA OS's
+- All 12 tools (`agent/tools/*`) — real Neon PostgreSQL queries against KAPWA OS's
   actual tables (`resort_ops_bookings`, `resort_ops_units`, `guest_requests`,
   `housekeeping_orders`, `resort_ops_tasks`, `tour_bookings`, `tours_config`,
   `assets`). Verified by inspecting the real `types.ts` from your repo, not
@@ -32,12 +32,12 @@ triage — unrelated, don't touch it).
   executed here. Run it locally and tell me what breaks.
 - A live mic → STT → LLM → TTS round trip — the wiring is correct against
   the real library API, but a live audio test is the real proof.
-- The Supabase migration (`supabase_migrations/0001_tala_memory_and_faq.sql`)
-  has not been applied to the live project yet.
+- The Neon PostgreSQL schema (`db/schema.sql`)
+  is applied via `npm run db:migrate`.
 
 > **Project reference.** Earlier revisions of this document named the retired
 > `paghxagqnaisxesmhnwj` project. The single production project is the one in
-> `supabase/config.toml` (`project_id`) at the repository root. Do not apply
+> `kapwa_db/config.toml` (`project_id`) at the repository root. Do not apply
 > anything here to any other project.
 >
 > **Status.** This directory is a standalone prototype. Nothing in the React
@@ -47,11 +47,11 @@ triage — unrelated, don't touch it).
 
 ---
 
-## 1. Apply the Supabase migration
+## 1. Apply the Neon PostgreSQL migration
 
 ```bash
-# From the Supabase SQL editor of the project in supabase/config.toml, paste and run:
-supabase_migrations/0001_tala_memory_and_faq.sql
+# From the Neon PostgreSQL SQL editor of the project in kapwa_db/config.toml, paste and run:
+db/schema.sql
 ```
 
 This adds `guest_memory`, `tala_conversations`, and `faq_entries` —
@@ -63,7 +63,7 @@ nothing in this migration touches or modifies any existing table.
 cp .env.example .env
 # Fill in:
 #   LIVEKIT_API_KEY / LIVEKIT_API_SECRET   (any values for local dev; see docker-compose.yml)
-#   SUPABASE_SERVICE_ROLE_KEY               (from Supabase project settings -> API)
+#   INTERNAL_FN_SECRET               (from Neon PostgreSQL project settings -> API)
 #   WEATHER_API_KEY                         (optional, OpenWeatherMap free tier)
 ```
 
@@ -127,7 +127,7 @@ Guest mic (React PWA)
   -> LiveKit room (self-hosted)
     -> whisper.cpp (STT, OpenAI-compatible)
       -> AgentSession (livekit-agents) + Ollama/Qwen3 8B (OpenAI-compatible LLM endpoint)
-        -> TalaAgent.@function_tool methods -> agent/tools/* -> Supabase (KAPWA OS live data)
+        -> TalaAgent.@function_tool methods -> agent/tools/* -> Neon PostgreSQL (KAPWA OS live data)
       -> Kokoro (TTS, OpenAI-compatible)
     -> back into LiveKit room
   -> Guest hears TALA's reply
@@ -138,7 +138,7 @@ Guest mic (React PWA)
 | Loop | Where | What it does |
 |---|---|---|
 | **Planner** | Native LiveKit `AgentSession` + Qwen3 tool-calling | Qwen3 decides whether to answer directly or call one of TALA's 12 `@function_tool` methods. We don't re-implement intent classification — Qwen3's own tool-calling *is* the planner. |
-| **Execution** | Native `AgentSession` tool execution | Framework runs the chosen tool(s); each `@function_tool` method on `TalaAgent` is a thin pass-through to the pure-Python functions in `agent/tools/*`, which hit real Supabase tables. |
+| **Execution** | Native `AgentSession` tool execution | Framework runs the chosen tool(s); each `@function_tool` method on `TalaAgent` is a thin pass-through to the pure-Python functions in `agent/tools/*`, which hit real Neon PostgreSQL tables. |
 | **Verification** | `session.on("function_tools_executed")` + `session.on("conversation_item_added")` | Checks `FunctionCallOutput.is_error` on every tool call, and checks every assistant turn for blank/empty responses. |
 | **Repair** | Same event hooks, via `agent/loops/repair.py` logic ported into `RepairState` | Retries the *specific* failed tool call directly (bypassing a full re-plan when we already know what failed). Max 3 attempts (`MAX_RETRIES` in `.env`), then escalates with a warm hand-off line and flags `tala_conversations.escalated = true` for staff review. |
 

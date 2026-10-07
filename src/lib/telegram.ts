@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { getStaffToken } from '@/lib/session';
 
 /**
@@ -16,7 +16,7 @@ import { getStaffToken } from '@/lib/session';
 export function notifyTelegram(group: string, message: string) {
   if (!getStaffToken()) return Promise.resolve();
 
-  return supabase.functions
+  return kapwaClient.functions
     .invoke('send-telegram', { body: { group, message } })
     .then(({ error }) => {
       if (error) console.warn('[telegram] notification skipped:', error.message);

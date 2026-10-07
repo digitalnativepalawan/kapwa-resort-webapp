@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useInvoiceSettings } from '@/hooks/useInvoiceSettings';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -48,9 +48,9 @@ const InvoiceSettingsForm = () => {
       };
 
       if (settings?.id) {
-        await (supabase.from('invoice_settings' as any) as any).update(payload).eq('id', settings.id);
+        await (kapwaClient.from('invoice_settings' as any) as any).update(payload).eq('id', settings.id);
       } else {
-        await (supabase.from('invoice_settings' as any) as any).insert(payload);
+        await (kapwaClient.from('invoice_settings' as any) as any).insert(payload);
       }
       qc.invalidateQueries({ queryKey: ['invoice-settings'] });
       toast.success('Invoice settings saved');

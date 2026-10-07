@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -109,20 +109,20 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
 
   // Realtime
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel(`${department}-orders-realtime`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: [`orders-${department}`] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc, department]);
 
   const { data: allOrders = [] } = useQuery({
     queryKey: [`orders-${department}`],
     queryFn: async () => {
       // Fetch recent orders regardless of date (limited to 200)
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Served'])
@@ -213,7 +213,7 @@ const DepartmentOrdersView = ({ department, embedded = false }: DepartmentOrders
       updateData.status = 'Preparing';
     }
 
-    await supabase.from('orders').update(updateData).eq('id', order.id);
+    await kapwaClient.from('orders').update(updateData).eq('id', order.id);
 
     if (nextDeptStatus === 'preparing') {
       const items = (order.items as any[]) || [];

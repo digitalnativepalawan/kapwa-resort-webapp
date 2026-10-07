@@ -13,7 +13,7 @@
 --      will lock the back office out of settings and the FAQ editor.
 --
 -- What it does: removes the named COMPAT policies added by
--- supabase/migrations/20260727120000_reconcile_rls_phase2.sql, leaving only the
+-- db/20260727120000_reconcile_rls_phase2.sql, leaving only the
 -- claim-based policies. It also revokes anon's read access to the stored
 -- OpenRouter key.
 --

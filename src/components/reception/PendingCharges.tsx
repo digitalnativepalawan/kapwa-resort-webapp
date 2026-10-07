@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Badge } from '@/components/ui/badge';
 import { Home, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -27,7 +27,7 @@ const PendingCharges = () => {
     queryKey: ['reception-pending-charges'],
     queryFn: async () => {
       // Get orders ready for billing
-      const { data: orders } = await supabase
+      const { data: orders } = await kapwaClient
         .from('orders')
         .select('*')
         .eq('ready_for_billing', true)
@@ -42,7 +42,7 @@ const PendingCharges = () => {
         if (!order.room_id) continue;
 
         // Get room name
-        const { data: room } = await supabase
+        const { data: room } = await kapwaClient
           .from('resort_ops_units')
           .select('name')
           .eq('id', order.room_id)

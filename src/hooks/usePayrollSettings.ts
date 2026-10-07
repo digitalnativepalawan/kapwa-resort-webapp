@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 
 export interface PayrollSettings {
@@ -18,7 +18,7 @@ export const usePayrollSettings = () => {
   const query = useQuery({
     queryKey: ['payroll-settings'],
     queryFn: async () => {
-      const { data } = await (supabase.from('payroll_settings' as any) as any)
+      const { data } = await (kapwaClient.from('payroll_settings' as any) as any)
         .select('*')
         .limit(1)
         .maybeSingle();
@@ -29,11 +29,11 @@ export const usePayrollSettings = () => {
   const upsert = async (updates: Partial<PayrollSettings>) => {
     const existing = query.data;
     if (existing) {
-      await (supabase.from('payroll_settings' as any) as any)
+      await (kapwaClient.from('payroll_settings' as any) as any)
         .update(updates)
         .eq('id', existing.id);
     } else {
-      await (supabase.from('payroll_settings' as any) as any)
+      await (kapwaClient.from('payroll_settings' as any) as any)
         .insert(updates);
     }
     qc.invalidateQueries({ queryKey: ['payroll-settings'] });

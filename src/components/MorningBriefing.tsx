@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 import {
@@ -7,7 +7,7 @@ import {
   ClipboardList, Zap, MapPin, Bell, Car,
 } from 'lucide-react';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const getManilaDate = () =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });

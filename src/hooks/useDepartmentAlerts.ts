@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { startOfDay } from 'date-fns';
 
 export interface DepartmentAlerts {
@@ -18,7 +18,7 @@ export function useDepartmentAlerts(): DepartmentAlerts {
   const { data: activeOrders } = useQuery({
     queryKey: ['dept-alerts-orders'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('status, kitchen_status, bar_status, items')
         .gte('created_at', today)
@@ -32,7 +32,7 @@ export function useDepartmentAlerts(): DepartmentAlerts {
   const { data: pendingRequests } = useQuery({
     queryKey: ['dept-alerts-requests'],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count } = await kapwaClient
         .from('guest_requests')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'pending');
@@ -45,7 +45,7 @@ export function useDepartmentAlerts(): DepartmentAlerts {
   const { data: pendingHK } = useQuery({
     queryKey: ['dept-alerts-housekeeping'],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count } = await kapwaClient
         .from('housekeeping_orders')
         .select('id', { count: 'exact', head: true })
         .in('status', ['pending_inspection', 'pending_cleaning']);
@@ -58,7 +58,7 @@ export function useDepartmentAlerts(): DepartmentAlerts {
   const { data: pendingTours } = useQuery({
     queryKey: ['dept-alerts-tours'],
     queryFn: async () => {
-      const { count } = await supabase
+      const { count } = await kapwaClient
         .from('guest_tours')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'booked');

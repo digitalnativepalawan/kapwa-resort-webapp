@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ const OrderArchive = () => {
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['order-archive'],
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(1000);
+      const { data } = await kapwaClient.from('orders').select('*').order('created_at', { ascending: false }).limit(1000);
       return data || [];
     },
   });

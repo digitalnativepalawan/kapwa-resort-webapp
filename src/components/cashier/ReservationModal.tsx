@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { notifyTelegram } from '@/lib/telegram';
 import {
   Dialog,
@@ -50,7 +50,7 @@ const ReservationModal = ({ open, onOpenChange }: ReservationModalProps) => {
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-items-for-reservation'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('menu_items')
         .select('id, name, price, category')
         .eq('available', true)
@@ -102,7 +102,7 @@ const ReservationModal = ({ open, onOpenChange }: ReservationModalProps) => {
     setLoading(true);
     
     try {
-      const { error, data } = await supabase
+      const { error, data } = await kapwaClient
         .from('dining_reservations')
         .insert({
           guest_name: formData.guest_name,

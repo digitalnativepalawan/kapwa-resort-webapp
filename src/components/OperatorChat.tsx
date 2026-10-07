@@ -3,7 +3,7 @@
 // live resort state and answers from it. No local runtime, no Hermes.
 
 import { useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,7 +42,7 @@ export default function OperatorChat() {
     setMessages(current => [...current, { role: 'user', content: question, at: new Date() }]);
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('resort-operator', {
+      const { data, error } = await kapwaClient.functions.invoke('resort-operator', {
         body: { action: 'ask', question },
       });
       if (error) throw new Error(error.message || 'Agent unreachable');

@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,7 @@ const TaskCommentThread = ({ taskId, authorName, readOnly = false, maxComments =
   const { data: comments = [] } = useQuery({
     queryKey: ['task-comments', taskId],
     queryFn: async () => {
-      const { data } = await (supabase.from('task_comments' as any) as any)
+      const { data } = await (kapwaClient.from('task_comments' as any) as any)
         .select('*')
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
@@ -61,9 +61,9 @@ const TaskCommentThread = ({ taskId, authorName, readOnly = false, maxComments =
       const compressed = await compressImage(file, 800);
       const ext = compressed.name.split('.').pop();
       const path = `task-comments/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('receipts').upload(path, compressed);
+      const { error } = await kapwaClient.storage.from('receipts').upload(path, compressed);
       if (error) throw error;
-      const { data: pub } = supabase.storage.from('receipts').getPublicUrl(path);
+      const { data: pub } = kapwaClient.storage.from('receipts').getPublicUrl(path);
       setImageUrl(pub.publicUrl);
       toast.success('Image uploaded');
     } catch {
@@ -78,7 +78,7 @@ const TaskCommentThread = ({ taskId, authorName, readOnly = false, maxComments =
     if (atCommentLimit) return;
     setSubmitting(true);
     try {
-      await (supabase.from('task_comments' as any) as any).insert({
+      await (kapwaClient.from('task_comments' as any) as any).insert({
         task_id: taskId,
         author_name: authorName,
         content: text.trim(),

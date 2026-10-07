@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { Download, Upload } from 'lucide-react';
 
@@ -94,7 +94,7 @@ const MenuBulkImportModal = ({ open, onOpenChange, onComplete, categories }: Men
     }
 
     if (rows.length > 0) {
-      const { error } = await supabase.from('menu_items').insert(rows);
+      const { error } = await kapwaClient.from('menu_items').insert(rows);
       if (error) {
         errors.push(`DB error: ${error.message}`);
       }

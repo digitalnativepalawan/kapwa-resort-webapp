@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -57,7 +57,7 @@ const GuestPaymentSettingsForm = () => {
   const { data: settings } = useQuery({
     queryKey: ['guest-payment-settings'],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_payment_settings') as any)
+      const { data } = await (kapwaClient.from('guest_payment_settings') as any)
         .select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
       return data;
     },
@@ -85,10 +85,10 @@ const GuestPaymentSettingsForm = () => {
     try {
       const payload = { ...form };
       if (settings?.id) {
-        const { error } = await (supabase.from('guest_payment_settings') as any).update(payload).eq('id', settings.id);
+        const { error } = await (kapwaClient.from('guest_payment_settings') as any).update(payload).eq('id', settings.id);
         if (error) throw error;
       } else {
-        const { error } = await (supabase.from('guest_payment_settings') as any).insert(payload);
+        const { error } = await (kapwaClient.from('guest_payment_settings') as any).insert(payload);
         if (error) throw error;
       }
       qc.invalidateQueries({ queryKey: ['guest-payment-settings'] });

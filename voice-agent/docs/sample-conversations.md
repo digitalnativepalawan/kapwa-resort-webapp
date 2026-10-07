@@ -68,12 +68,12 @@ fallback line instead of guessing. 1 retry used, no escalation.
 
 ---
 
-## 4. Tool failure + retry (Supabase hiccup)
+## 4. Tool failure + retry (Neon PostgreSQL hiccup)
 
 > **Guest:** Is my room cleaned already? I'm in Cottage 1.
 >
 > **TALA (attempt 1):** *(calls `housekeeping_status(unit_name="Cottage 1")`)*
-> *(Supabase connection timeout — `ToolResult.failure`)*
+> *(Neon PostgreSQL connection timeout — `ToolResult.failure`)*
 
 *(Verification Loop flags `TOOL_FAILED`. Repair Loop retries the exact same
 tool call directly, attempt 2.)*
@@ -84,7 +84,7 @@ tool call directly, attempt 2.)*
 > **TALA:** Housekeeping is on it right now po for Cottage 1 — should be
 > done within the next 20 to 30 minutes. I'll let them know you're asking!
 
-**Loop trace:** Execution fails once due to a transient Supabase error →
+**Loop trace:** Execution fails once due to a transient Neon PostgreSQL error →
 Verification flags it → Repair retries the same tool call directly (not a
 full re-plan, since we already know exactly which tool+args failed) →
 success → response generated normally. 1 retry used.
@@ -112,8 +112,8 @@ call), so TALA references it naturally on the very first turn.
 
 > **Guest:** Can you book me a table for 4 tonight at 7?
 >
-> *(Attempt 1: `create_task` fails — Supabase auth error)*
-> *(Repair: retry attempt 2 — same error, Supabase project paused/network issue)*
+> *(Attempt 1: `create_task` fails — Neon PostgreSQL auth error)*
+> *(Repair: retry attempt 2 — same error, Neon PostgreSQL project paused/network issue)*
 > *(Repair: retry attempt 3 — same error)*
 >
 > **TALA:** I'm having a little trouble with that right now po. Let me get

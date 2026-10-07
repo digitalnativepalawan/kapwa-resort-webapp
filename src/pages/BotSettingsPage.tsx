@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -91,11 +91,11 @@ export default function BotSettingsPage() {
 
   const activeCount = useMemo(() => faqs.filter(item => item.active).length, [faqs]);
 
-  // ── Load settings from Supabase ────────────────────────────────────────────
+  // ── Load settings from KAPWA ────────────────────────────────────────────
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await (supabase.from('settings') as any)
+        const { data } = await (kapwaClient.from('settings') as any)
           .select('bot_enabled, bot_provider, bot_base_url, bot_model, bot_temperature, bot_max_tokens, openrouter_api_key, openrouter_model')
           .limit(1)
           .maybeSingle();
@@ -196,7 +196,7 @@ export default function BotSettingsPage() {
     return list;
   }, [openrouterModels, showFreeOnly, openrouterSearch]);
 
-  // ── Save settings to Supabase ──────────────────────────────────────────────
+  // ── Save settings to KAPWA ──────────────────────────────────────────────
   const saveRuntimeSettings = async () => {
     setSaving(true);
     try {
@@ -215,16 +215,16 @@ export default function BotSettingsPage() {
       }
 
       // Try to get existing row id
-      const { data: existing } = await (supabase.from('settings') as any)
+      const { data: existing } = await (kapwaClient.from('settings') as any)
         .select('id')
         .limit(1)
         .maybeSingle();
 
       let result;
       if (existing?.id) {
-        result = await (supabase.from('settings') as any).update(payload).eq('id', existing.id);
+        result = await (kapwaClient.from('settings') as any).update(payload).eq('id', existing.id);
       } else {
-        result = await (supabase.from('settings') as any).insert(payload);
+        result = await (kapwaClient.from('settings') as any).insert(payload);
       }
       if (result.error) throw result.error;
 
@@ -244,7 +244,7 @@ export default function BotSettingsPage() {
   const loadSharedData = async () => {
     setLoading(true);
     try {
-      const faqResult = await (supabase.from('guest_faq_memory') as any)
+      const faqResult = await (kapwaClient.from('guest_faq_memory') as any)
         .select('*')
         .order('sort_order')
         .order('created_at');
@@ -267,7 +267,7 @@ export default function BotSettingsPage() {
       return;
     }
     try {
-      const result = await (supabase.from('guest_faq_memory') as any)
+      const result = await (kapwaClient.from('guest_faq_memory') as any)
         .insert({
           question: form.question.trim(),
           keywords: form.keywords.trim(),
@@ -292,7 +292,7 @@ export default function BotSettingsPage() {
   };
 
   const toggleFaq = async (id: string, active: boolean) => {
-    const result = await (supabase.from('guest_faq_memory') as any).update({ active }).eq('id', id);
+    const result = await (kapwaClient.from('guest_faq_memory') as any).update({ active }).eq('id', id);
     if (result.error) return toast.error(result.error.message);
     setFaqs(prev => prev.map(item => item.id === id ? { ...item, active } : item));
   };
@@ -312,7 +312,7 @@ export default function BotSettingsPage() {
     const answer = editDraft.answer.trim();
     const keywords = editDraft.keywords.trim();
     if (!question || !answer) return toast.error('Question and answer are required');
-    const result = await (supabase.from('guest_faq_memory') as any)
+    const result = await (kapwaClient.from('guest_faq_memory') as any)
       .update({ question, keywords, answer })
       .eq('id', id);
     if (result.error) return toast.error(result.error.message);
@@ -322,7 +322,7 @@ export default function BotSettingsPage() {
   };
 
   const deleteFaq = async (id: string) => {
-    const result = await (supabase.from('guest_faq_memory') as any).delete().eq('id', id);
+    const result = await (kapwaClient.from('guest_faq_memory') as any).delete().eq('id', id);
     if (result.error) return toast.error(result.error.message);
     setFaqs(prev => prev.filter(item => item.id !== id));
   };
@@ -371,7 +371,7 @@ export default function BotSettingsPage() {
           sort_order: faqs.length + index,
         }));
       if (newRows.length === 0) { toast.success('All imported answers already exist'); return; }
-      const result = await (supabase.from('guest_faq_memory') as any).insert(newRows).select('*');
+      const result = await (kapwaClient.from('guest_faq_memory') as any).insert(newRows).select('*');
       if (result.error) throw result.error;
       await loadSharedData();
       toast.success(`${newRows.length} answers imported`);

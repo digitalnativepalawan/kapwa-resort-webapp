@@ -3,7 +3,7 @@
 > ## Current state (read this first)
 >
 > The staged plan below was written before Phase 2 shipped. What actually
-> happened: **the Phase 2 SQL was committed to `supabase/migrations` and applied
+> happened: **the Phase 2 SQL was committed to `db` and applied
 > while `VITE_USE_STAFF_JWT` was still `"false"`.** Staff browsers were therefore
 > the anonymous role, and every claim-protected table read as empty — employees,
 > permissions, payroll, bonuses, audit log.
@@ -18,7 +18,7 @@
 >
 > 1. Set `STAFF_JWT_SECRET` on `employee-auth` to the project's JWT secret
 >    (Settings → API → JWT Settings) and redeploy the function.
-> 2. Apply `supabase/migrations/20260727120000_reconcile_rls_phase2.sql`.
+> 2. Apply `db/20260727120000_reconcile_rls_phase2.sql`.
 >    Safe in either state.
 > 3. Sign out, sign back in, open **Admin → Audit → Staff Authentication**.
 >    - **Active** → PostgREST accepts the token. Continue.
@@ -78,32 +78,32 @@ flag and cut over Phase 2 table-by-table on staging.
 
 What changed:
 
-- **`supabase/functions/employee-auth`** now mints a Supabase-compatible HS256
+- **`server/services/employee-auth`** now mints a Neon PostgreSQL-compatible HS256
   JWT on `verify` / `admin-verify` and returns it as `token`. Claims include
   `sub`/`employee_id`, `role: authenticated`, `permissions`, `is_admin`, `exp`.
   It only mints when `STAFF_JWT_SECRET` is set — otherwise `token` is `null` and
   behavior is unchanged.
 - **`src/lib/session.ts`** stores the optional `token` and exposes
   `getStaffToken()`.
-- **`src/integrations/supabase/client.ts`** reads `VITE_USE_STAFF_JWT`. When
+- **`src/lib/kapwaClient.ts`** reads `VITE_USE_STAFF_JWT`. When
   `'true'`, every request sends the staff JWT (falling back to the anon key when
   logged out). When unset/false, the client is identical to before.
 - **`src/pages/Index.tsx`** passes the returned `token` into the session.
 
 ### Enable on staging
 
-1. In Supabase → **Settings → API → JWT Settings**, copy the **JWT Secret**.
+1. In Neon PostgreSQL → **Settings → API → JWT Settings**, copy the **JWT Secret**.
    > This project uses a legacy HS256 shared secret (the anon key header is
    > `{"alg":"HS256"}`). If you have migrated to asymmetric (ECC/RSA) keys, the
    > signing in `employee-auth` must be switched to the private key instead.
 2. Set it as a function secret:
-   `supabase secrets set STAFF_JWT_SECRET=<the JWT secret>`
+   `kapwa secrets set STAFF_JWT_SECRET=<the JWT secret>`
 3. Also set the internal secret used by the Phase-1 endpoint guards
    (`admin-summary`, `guest-requests-api`) and pass it as the `x-internal-secret`
    header from any cron/monitor that calls them:
-   `supabase secrets set INTERNAL_FN_SECRET=<a long random string>`
+   `kapwa secrets set INTERNAL_FN_SECRET=<a long random string>`
 4. Deploy the functions:
-   `supabase functions deploy employee-auth admin-summary guest-requests-api`
+   `kapwa functions deploy employee-auth admin-summary guest-requests-api`
 5. Build the frontend with `VITE_USE_STAFF_JWT=true` on staging.
 6. **Verify** before touching RLS:
    - Log in as staff → the `employee-auth` response contains a non-null `token`.

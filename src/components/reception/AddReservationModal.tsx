@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
@@ -15,7 +15,7 @@ import ConflictModal from './ConflictModal';
 import { findConflicts, findAvailableRooms, type BookingWithGuest, type ResortUnit } from './calendarUtils';
 import { format, parseISO } from 'date-fns';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 interface AddReservationModalProps {
   open: boolean;
@@ -203,14 +203,14 @@ const AddReservationModal = ({ open, onClose, rooms, bookings, canManage, editBo
       if (editBooking.unit_id) {
         const room = rooms.find(r => r.id === editBooking.unit_id);
         if (room) {
-          const { data: displayUnit } = await supabase.from('units' as any).select('id, status').ilike('unit_name', room.name.trim()).limit(1);
+          const { data: displayUnit } = await kapwaClient.from('units' as any).select('id, status').ilike('unit_name', room.name.trim()).limit(1);
           const dUnit = (displayUnit as any)?.[0];
           if (dUnit && (dUnit.status === 'occupied' || dUnit.status === 'to_clean')) {
             // Check if any OTHER active booking exists for this unit
             const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
             const otherActive = bookings.find(b => b.id !== editBooking.id && b.unit_id === editBooking.unit_id && b.check_in <= today && b.check_out > today);
             if (!otherActive) {
-              await supabase.from('units' as any).update({ status: 'ready' } as any).eq('id', dUnit.id);
+              await kapwaClient.from('units' as any).update({ status: 'ready' } as any).eq('id', dUnit.id);
             }
           }
         }

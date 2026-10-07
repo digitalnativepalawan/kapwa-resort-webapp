@@ -9,7 +9,7 @@ can't forget to check it.
 from __future__ import annotations
 from datetime import datetime
 from typing import Any
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 
 
 def load_guest_memory(guest_id: str | None = None, phone: str | None = None, name: str | None = None) -> dict[str, Any] | None:

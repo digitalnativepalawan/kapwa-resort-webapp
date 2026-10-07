@@ -6,7 +6,7 @@ facts from its own "knowledge", only from this table or other tool results.
 from __future__ import annotations
 import httpx
 from agent.config import load_settings
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 from agent.tools.base import ToolResult
 
 _settings = load_settings()

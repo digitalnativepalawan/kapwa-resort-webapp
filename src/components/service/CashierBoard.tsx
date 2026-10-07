@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { getStaffSession } from '@/lib/session';
 import { toast } from 'sonner';
@@ -36,14 +36,14 @@ const CashierBoard = () => {
 
   // Realtime
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('cashier-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['cashier-orders'] });
         qc.invalidateQueries({ queryKey: ['cashier-completed'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   const { data: orders = [] } = useQuery({
@@ -51,7 +51,7 @@ const CashierBoard = () => {
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('status', ['Ready', 'Served'])
@@ -68,7 +68,7 @@ const CashierBoard = () => {
     queryFn: async () => {
       const dayStart = `${completedDate}T00:00:00`;
       const dayEnd = `${completedDate}T23:59:59`;
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .eq('status', 'Paid')
@@ -87,7 +87,7 @@ const CashierBoard = () => {
     queryKey: ['cashier-active-bookings'],
     queryFn: async () => {
       const today = new Date().toISOString().slice(0, 10);
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('resort_ops_bookings')
         .select('id, check_in, check_out, checked_out_at, unit_id, guest_id, resort_ops_guests(full_name), resort_ops_units:unit_id(name)')
         .lte('check_in', today)
@@ -102,7 +102,7 @@ const CashierBoard = () => {
   const { data: roomUnits = [] } = useQuery({
     queryKey: ['cashier-room-units'],
     queryFn: async () => {
-      const { data } = await (supabase.from('units' as any) as any)
+      const { data } = await (kapwaClient.from('units' as any) as any)
         .select('id, unit_name')
         .eq('active', true)
         .order('unit_name');
@@ -119,7 +119,7 @@ const CashierBoard = () => {
       nextWeek.setDate(nextWeek.getDate() + 7);
       const nextWeekStr = nextWeek.toISOString().split('T')[0];
       
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('dining_reservations')
         .select('*')
         .eq('status', 'pending')
@@ -208,7 +208,7 @@ const CashierBoard = () => {
 
           updateData.room_id = roomUnit.id;
 
-          const { error: roomTransactionError } = await (supabase.from('room_transactions' as any) as any).insert({
+          const { error: roomTransactionError } = await (kapwaClient.from('room_transactions' as any) as any).insert({
             unit_id: roomUnit.id,
             unit_name: roomUnit.unit_name,
             guest_name: booking.resort_ops_guests?.full_name || order.guest_name || '',
@@ -227,7 +227,7 @@ const CashierBoard = () => {
           if (roomTransactionError) throw roomTransactionError;
         }
 
-        const { error: orderError } = await supabase.from('orders').update(updateData).eq('id', order.id);
+        const { error: orderError } = await kapwaClient.from('orders').update(updateData).eq('id', order.id);
         if (orderError) throw orderError;
       }
 

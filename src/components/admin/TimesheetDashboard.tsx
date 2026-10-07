@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,7 +44,7 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ['employees-timesheet'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('id, name, hourly_rate').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('id, name, hourly_rate').eq('active', true).order('name');
       return (data || []) as Employee[];
     },
   });
@@ -52,17 +52,17 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: entries = [] } = useQuery<TimeEntry[]>({
     queryKey: ['time-entries'],
     queryFn: async () => {
-      const { data } = await supabase.from('time_entries').select('*').order('entry_date', { ascending: false }).order('clock_in', { ascending: false }).limit(20);
+      const { data } = await kapwaClient.from('time_entries').select('*').order('entry_date', { ascending: false }).order('clock_in', { ascending: false }).limit(20);
       return (data || []) as TimeEntry[];
     },
   });
 
   useEffect(() => {
-    const ch = supabase.channel('time-entries-rt')
+    const ch = kapwaClient.channel('time-entries-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'time_entries' }, () => {
         qc.invalidateQueries({ queryKey: ['time-entries'] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { kapwaClient.removeChannel(ch); };
   }, [qc]);
 
   const empMap = useMemo(() => {
@@ -91,7 +91,7 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   }, [calcStart, calcEnd, entries, empMap]);
 
   const clockOut = async (id: string) => {
-    await supabase.from('time_entries').update({ clock_out: new Date().toISOString() }).eq('id', id);
+    await kapwaClient.from('time_entries').update({ clock_out: new Date().toISOString() }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['time-entries'] });
     toast.success('Clocked out');
   };
@@ -108,7 +108,7 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const saveEdit = async () => {
     if (!editingId) return;
-    await supabase.from('time_entries').update({
+    await kapwaClient.from('time_entries').update({
       clock_in: new Date(editForm.clock_in).toISOString(),
       clock_out: editForm.clock_out ? new Date(editForm.clock_out).toISOString() : null,
       is_paid: editForm.is_paid,
@@ -122,7 +122,7 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
   const confirmDelete = async () => {
     if (!deleteId) return;
-    await supabase.from('time_entries').delete().eq('id', deleteId);
+    await kapwaClient.from('time_entries').delete().eq('id', deleteId);
     setDeleteId(null);
     qc.invalidateQueries({ queryKey: ['time-entries'] });
     toast.success('Entry deleted');
@@ -177,7 +177,7 @@ const TimesheetDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       const entryDate = dateStr;
       const clockIn = new Date(`${dateStr}T${clockInStr || '08:00'}:00`).toISOString();
       const clockOut = clockOutStr ? new Date(`${dateStr}T${clockOutStr}:00`).toISOString() : null;
-      const { error } = await supabase.from('time_entries').insert({ employee_id: empId, entry_date: entryDate, clock_in: clockIn, clock_out: clockOut });
+      const { error } = await kapwaClient.from('time_entries').insert({ employee_id: empId, entry_date: entryDate, clock_in: clockIn, clock_out: clockOut });
       if (error) errors++; else inserted++;
     }
     qc.invalidateQueries({ queryKey: ['time-entries'] });

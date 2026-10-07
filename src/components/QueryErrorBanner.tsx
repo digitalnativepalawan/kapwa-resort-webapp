@@ -13,13 +13,13 @@ interface QueryErrorBannerProps {
 /**
  * Shows a failed data load instead of hiding it behind an empty list.
  *
- * Most screens in this app did `const { data } = await supabase.from(...)` and
+ * Most screens in this app did `const { data } = await kapwaClient.from(...)` and
  * returned `data || []`, discarding the error. When RLS started rejecting
  * anonymous reads, every one of those screens rendered "nothing here" — which
  * looked like a data problem rather than an auth problem and sent the
  * investigation in the wrong direction for a long time.
  *
- * The Supabase message is shown verbatim: "new row violates row-level security
+ * The KAPWA message is shown verbatim: "new row violates row-level security
  * policy" and "JWT expired" are the two answers worth reading, and paraphrasing
  * them loses the diagnosis.
  */

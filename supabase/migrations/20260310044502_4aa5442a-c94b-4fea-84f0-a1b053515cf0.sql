@@ -1,1 +1,0 @@
-ALTER TABLE resort_ops_bookings ADD COLUMN IF NOT EXISTS bill_agreed_at timestamptz DEFAULT NULL;

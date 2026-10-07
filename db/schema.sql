@@ -1300,3 +1300,17 @@ CREATE TABLE IF NOT EXISTS public.staff_schedule (
   shift_end TIMESTAMPTZ,
   status TEXT DEFAULT 'scheduled'
 );
+
+CREATE TABLE IF NOT EXISTS public.historical_revenue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  date DATE NOT NULL,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  category TEXT NOT NULL DEFAULT 'Other',
+  item_name TEXT NOT NULL DEFAULT '',
+  qty NUMERIC NOT NULL DEFAULT 1,
+  revenue NUMERIC NOT NULL DEFAULT 0,
+  payment_method TEXT NOT NULL DEFAULT 'Cash',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,7 @@ const getManilaHour = () => parseInt(new Date().toLocaleString('en-US', { timeZo
 /** Format Manila time as readable string */
 const getManilaTimeStr = () => new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 /* InlineBill removed – billing is accessible via Details sheet */
 
@@ -166,11 +166,11 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: hkEmployeesForCheckout = [] } = useQuery({
     queryKey: ['housekeeping-employees'],
     queryFn: async () => {
-      const { data: perms } = await supabase.from('employee_permissions')
+      const { data: perms } = await kapwaClient.from('employee_permissions')
         .select('employee_id')
         .like('permission', 'housekeeping%');
       const hkIds = new Set((perms || []).map((p: any) => p.employee_id));
-      const { data: emps } = await supabase.from('employees')
+      const { data: emps } = await kapwaClient.from('employees')
         .select('id, name, display_name, whatsapp_number')
         .eq('active', true)
         .order('name');
@@ -188,7 +188,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: roomTypes = [] } = useQuery({
     queryKey: ['room-types'],
     queryFn: async () => {
-      const { data } = await supabase.from('room_types').select('*').order('name');
+      const { data } = await kapwaClient.from('room_types').select('*').order('name');
       return (data || []) as any[];
     },
   });
@@ -197,7 +197,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').eq('active', true).order('unit_name');
       return (data || []).map((u: any) => ({ ...u, name: u.unit_name }));
     },
   });
@@ -215,7 +215,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: bookings = [] } = useQuery({
     queryKey: ['rooms-bookings'],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
+      const { data } = await kapwaClient.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
       return data || [];
     },
   });
@@ -261,7 +261,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const { data: tourBookings = [] } = useQuery({
     queryKey: ['reception-tour-bookings'],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any)
+      const { data } = await (kapwaClient.from('tour_bookings') as any)
         .select('*')
         .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
@@ -430,7 +430,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   // Realtime subscriptions for guest_requests and tour_bookings
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('reception-alerts-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_requests' }, () => {
         qc.invalidateQueries({ queryKey: ['reception-guest-requests'] });
@@ -445,7 +445,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         qc.invalidateQueries({ queryKey: ['reception-bill-disputes'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   const statusColor = (status: string) => {
@@ -466,7 +466,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   };
 
   const getRoomInfo = async (roomId: string) => {
-    const { data } = await supabase.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
+    const { data } = await kapwaClient.from('units').select('id, unit_name').eq('id', roomId).maybeSingle();
     return data;
   };
 
@@ -478,7 +478,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
     // Sync status to tour_bookings if a matching record exists
     if (tour && (status === 'cancelled' || status === 'completed')) {
-      await (supabase.from('tour_bookings') as any)
+      await (kapwaClient.from('tour_bookings') as any)
         .update({ status, confirmed_by: staffName })
         .eq('tour_name', tour.tour_name)
         .eq('tour_date', tour.tour_date)
@@ -492,7 +492,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const confirmTourBooking = async (b: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'confirmed',
       confirmed_by: staffName,
     }).eq('id', b.id);
@@ -503,7 +503,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const cancelTourBooking = async (id: string) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({
+    await (kapwaClient.from('tour_bookings') as any).update({
       status: 'cancelled',
       confirmed_by: staffName,
     }).eq('id', id);
@@ -514,12 +514,12 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   const completeTourBooking = async (b: any) => {
     if (!canDoEdit) { toast.error('View-only access'); return; }
-    await (supabase.from('tour_bookings') as any).update({ status: 'completed' }).eq('id', b.id);
+    await (kapwaClient.from('tour_bookings') as any).update({ status: 'completed' }).eq('id', b.id);
 
     // Insert room charge on completion
     if (Number(b.price) > 0 && b.room_id) {
       const room = await getRoomInfo(b.room_id);
-      await (supabase.from('room_transactions') as any).insert({
+      await (kapwaClient.from('room_transactions') as any).insert({
         unit_id: b.room_id,
         unit_name: room?.unit_name || '',
         booking_id: b.booking_id,
@@ -548,7 +548,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
       const price = parsePriceFromDetails(req.details);
       if (price > 0 && req.room_id) {
         const room = await getRoomInfo(req.room_id);
-        await (supabase.from('room_transactions') as any).insert({
+        await (kapwaClient.from('room_transactions') as any).insert({
           unit_id: req.room_id,
           unit_name: room?.unit_name || '',
           booking_id: req.booking_id,
@@ -574,7 +574,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
     if (!canDoManage) { toast.error('Manage access required'); return; }
     setForcingReady(unit.id);
     try {
-      await supabase.from('units').update({ status: 'ready' } as any).eq('id', unit.id);
+      await kapwaClient.from('units').update({ status: 'ready' } as any).eq('id', unit.id);
       // Complete any active housekeeping orders for this unit
       const hkOrder = activeHkOrders.find((o: any) => o.unit_name === unit.name);
       if (hkOrder) {
@@ -639,7 +639,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         checked_out_at: null,
       }).eq('id', checkInBooking.id);
 
-      await supabase.from('units').update({ status: 'occupied' } as any).eq('id', unit.id);
+      await kapwaClient.from('units').update({ status: 'occupied' } as any).eq('id', unit.id);
 
       // Early check-in fee
       const earlyFee = parseFloat(earlyCheckInFee) || 0;
@@ -772,7 +772,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         password_expires_at: expiresAt.toISOString(),
       });
 
-      await supabase.from('units').update({ status: 'occupied' } as any).eq('id', walkInUnit.id);
+      await kapwaClient.from('units').update({ status: 'occupied' } as any).eq('id', walkInUnit.id);
 
       // ── Auto-post accommodation charge for walk-in (skip for OTA platforms) ──
       const walkInRate = parseFloat(walkInForm.roomRate) || 0;
@@ -831,7 +831,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
   const handleSendToClean = async (unit: any, assignedTo?: string, assignedName?: string) => {
     setSendingClean(unit.id);
     try {
-      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unit.id);
+      await kapwaClient.from('units').update({ status: 'to_clean' } as any).eq('id', unit.id);
       const existing = activeHkOrders.find((o: any) => o.unit_name === unit.name);
       if (!existing) {
         await from('housekeeping_orders').insert({
@@ -912,7 +912,7 @@ const ReceptionPage = ({ embedded = false }: { embedded?: boolean }) => {
         check_out: today,
         checked_out_at: new Date().toISOString(),
       }).eq('id', checkOutBooking.id);
-      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
+      await kapwaClient.from('units').update({ status: 'to_clean' } as any).eq('id', checkOutUnit.id);
 
       // Telegram notification
       import('@/lib/telegram').then(({ notifyTelegram }) => {

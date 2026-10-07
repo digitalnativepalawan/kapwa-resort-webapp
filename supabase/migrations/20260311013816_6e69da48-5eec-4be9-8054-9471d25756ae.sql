@@ -1,1 +1,0 @@
-UPDATE order_types SET source_table = 'resort_tables' WHERE type_key = 'WalkIn';

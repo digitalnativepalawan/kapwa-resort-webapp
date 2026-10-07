@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,7 +21,7 @@ import ClosedCheckoutsPanel from '@/components/rooms/ClosedCheckoutsPanel';
 import { compressImage } from '@/lib/imageCompress';
 import { getManilaDateKey, resolveOperationalUnitWorkflow } from '@/lib/receptionOccupancy';
 
-const from = (table: string) => supabase.from(table as any) as any;
+const from = (table: string) => kapwaClient.from(table as any) as any;
 
 type DetailTab = 'info' | 'orders' | 'documents' | 'notes' | 'tours' | 'vibe' | 'billing' | 'timeline';
 
@@ -107,7 +107,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const { data: roomTypes = [] } = useQuery({
     queryKey: ['room-types'],
     queryFn: async () => {
-      const { data } = await supabase.from('room_types').select('*').order('name');
+      const { data } = await kapwaClient.from('room_types').select('*').order('name');
       return (data || []) as any[];
     },
   });
@@ -116,7 +116,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const { data: units = [] } = useQuery({
     queryKey: ['rooms-units'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').eq('active', true).order('unit_name');
       return (data || []).map((u: any) => ({ ...u, name: u.unit_name, type: '', capacity: 0 }));
     },
   });
@@ -143,7 +143,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const { data: bookings = [] } = useQuery({
     queryKey: ['rooms-bookings'],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
+      const { data } = await kapwaClient.from('resort_ops_bookings').select('*, resort_ops_guests(*)').order('check_in', { ascending: false });
       return data || [];
     },
   });
@@ -172,7 +172,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const { data: employees = [] } = useQuery({
     queryKey: ['employees-active'],
     queryFn: async () => {
-      const { data } = await supabase.from('employees').select('id, name, display_name').eq('active', true).order('name');
+      const { data } = await kapwaClient.from('employees').select('id, name, display_name').eq('active', true).order('name');
       return data || [];
     },
   });
@@ -181,21 +181,21 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
   const { data: toursConfig = [] } = useQuery({
     queryKey: ['tours-config-catalog'],
     queryFn: async () => {
-      const { data } = await supabase.from('tours_config').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('tours_config').select('*').eq('active', true).order('sort_order');
       return (data || []) as any[];
     },
   });
   const { data: rentalRates = [] } = useQuery({
     queryKey: ['rental-rates-catalog'],
     queryFn: async () => {
-      const { data } = await supabase.from('rental_rates').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('rental_rates').select('*').eq('active', true).order('sort_order');
       return (data || []) as any[];
     },
   });
   const { data: transportRates = [] } = useQuery({
     queryKey: ['transport-rates-catalog'],
     queryFn: async () => {
-      const { data } = await supabase.from('transport_rates').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('transport_rates').select('*').eq('active', true).order('sort_order');
       return (data || []) as any[];
     },
   });
@@ -234,7 +234,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     queryKey: ['rooms-orders', selectedUnit?.name, currentBooking?.id],
     enabled: !!selectedUnit && !!currentBooking,
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*')
+      const { data } = await kapwaClient.from('orders').select('*')
         .eq('order_type', 'Room')
         .eq('location_detail', selectedUnit!.name)
         .gte('created_at', currentBooking!.check_in + 'T00:00:00')
@@ -328,9 +328,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     const compressed = await compressImage(file);
     const ext = compressed.name.split('.').pop();
     const path = `notes/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('guest-documents').upload(path, compressed);
+    const { error } = await kapwaClient.storage.from('guest-documents').upload(path, compressed);
     if (error) { toast.error('Upload failed'); return; }
-    const { data: urlData } = supabase.storage.from('guest-documents').getPublicUrl(path);
+    const { data: urlData } = kapwaClient.storage.from('guest-documents').getPublicUrl(path);
     await from('guest_notes').insert({
       booking_id: currentBooking?.id || null,
       unit_name: selectedUnit.name,
@@ -367,7 +367,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
 
     // Sync to tour_bookings so it appears on /service/tours board
     const staffName = localStorage.getItem('emp_name') || '';
-    await (supabase.from('tour_bookings') as any).insert({
+    await (kapwaClient.from('tour_bookings') as any).insert({
       booking_id: currentBooking?.id || null,
       room_id: selectedUnit.id || null,
       guest_name: currentBooking?.resort_ops_guests?.full_name || selectedUnit.name,
@@ -414,9 +414,9 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     const ext = compressed.name.split('.').pop();
     const folder = guestId || selectedUnit.name.replace(/\s+/g, '_');
     const path = `${folder}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from('guest-documents').upload(path, compressed);
+    const { error } = await kapwaClient.storage.from('guest-documents').upload(path, compressed);
     if (error) { toast.error('Upload failed'); return; }
-    const { data: urlData } = supabase.storage.from('guest-documents').getPublicUrl(path);
+    const { data: urlData } = kapwaClient.storage.from('guest-documents').getPublicUrl(path);
     await from('guest_documents').insert({
       guest_id: guestId || null,
       unit_name: selectedUnit.name,
@@ -448,7 +448,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (readOnly) { toast.error('View-only access'); return; }
     const path = doc.image_url.split('/guest-documents/')[1];
     if (path && !doc.image_url.startsWith('http://') && !doc.image_url.includes('//') === false) {
-      await supabase.storage.from('guest-documents').remove([path]);
+      await kapwaClient.storage.from('guest-documents').remove([path]);
     }
     await from('guest_documents').delete().eq('id', doc.id);
     qc.invalidateQueries({ queryKey: ['guest-documents', selectedUnit?.name, guestId] });
@@ -546,7 +546,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
         room_password: roomPassword, password_expires_at: expiresAt.toISOString(),
       });
       if (bErr) throw new Error(bErr.message);
-      await supabase.from('units').update({ status: 'occupied' } as any).eq('id', selectedUnit.id);
+      await kapwaClient.from('units').update({ status: 'occupied' } as any).eq('id', selectedUnit.id);
       qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
       qc.invalidateQueries({ queryKey: ['rooms-units'] });
       setShowCheckInForm(false);
@@ -573,7 +573,7 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
       checked_out_at: new Date().toISOString(),
     }).eq('id', currentBooking.id);
     if (error) { toast.error('Checkout failed'); return; }
-    await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
+    await kapwaClient.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
     const existingOrder = housekeepingOrders.find((o: any) => o.unit_name === selectedUnit.name);
     if (!existingOrder) {
       await from('housekeeping_orders').insert({
@@ -607,8 +607,8 @@ const RoomsDashboard = ({ readOnly = false, canViewDocuments = true, initialUnit
     if (!newResortUnit) { toast.error('Target room not found in resort ops'); return; }
     await from('resort_ops_bookings').update({ unit_id: newResortUnit.id }).eq('id', currentBooking.id);
     // Old unit → to_clean, new unit → occupied
-    await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
-    await supabase.from('units').update({ status: 'occupied' } as any).eq('id', changeRoomId);
+    await kapwaClient.from('units').update({ status: 'to_clean' } as any).eq('id', selectedUnit.id);
+    await kapwaClient.from('units').update({ status: 'occupied' } as any).eq('id', changeRoomId);
     qc.invalidateQueries({ queryKey: ['rooms-bookings'] });
     qc.invalidateQueries({ queryKey: ['rooms-units'] });
     setShowChangeRoom(false);

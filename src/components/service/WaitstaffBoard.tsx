@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { Clock, Flame, GlassWater, Home, Receipt, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -34,20 +34,20 @@ const WaitstaffBoard = () => {
   const [activeUnit, setActiveUnit] = useState<string | null>(null);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('waitstaff-board')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['waitstaff-orders'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   const { data: orders = [] } = useQuery({
     queryKey: ['waitstaff-orders'],
     queryFn: async () => {
       // Fetch recent orders regardless of date (limited to 200)
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Ready'])
@@ -86,7 +86,7 @@ const WaitstaffBoard = () => {
     
     if (isInHouse) {
       // Find the room_id for this unit
-      const { data: unit } = await supabase
+      const { data: unit } = await kapwaClient
         .from('resort_ops_units')
         .select('id')
         .ilike('name', `%${group.key}%`)
@@ -95,7 +95,7 @@ const WaitstaffBoard = () => {
       const roomId = unit?.id;
       
       // For in-house guests: mark as Served (hides from Waitstaff) and flag for billing
-      await supabase
+      await kapwaClient
         .from('orders')
         .update({ 
           status: 'Served',
@@ -108,7 +108,7 @@ const WaitstaffBoard = () => {
       toast.success(`${group.label} — charges added to room bill`);
     } else {
       // For walk-in guests: send to cashier as before
-      await supabase
+      await kapwaClient
         .from('orders')
         .update({ status: 'Served' })
         .in('id', ids);

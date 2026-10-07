@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,7 +52,7 @@ const GuestPortal = () => {
   const { data: allUnits = [] } = useQuery({
     queryKey: ['active-units-portal'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('id, unit_name').eq('active', true).order('unit_name');
+      const { data } = await kapwaClient.from('units').select('id, unit_name').eq('active', true).order('unit_name');
       return data || [];
     },
     enabled: !session,
@@ -65,11 +65,11 @@ const GuestPortal = () => {
       const unit = allUnits.find(u => u.unit_name === roomName);
       if (!unit) { toast.error('Room not found'); setLoading(false); return; }
 
-      const { data: opsUnit } = await supabase.from('resort_ops_units').select('id').ilike('name', roomName.trim()).maybeSingle();
+      const { data: opsUnit } = await kapwaClient.from('resort_ops_units').select('id').ilike('name', roomName.trim()).maybeSingle();
       if (!opsUnit) { toast.error('Room not found'); setLoading(false); return; }
 
       const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-      const { data: bookings } = await supabase
+      const { data: bookings } = await kapwaClient
         .from('resort_ops_bookings')
         .select('id, check_in, check_out, guest_login_count, resort_ops_guests(full_name)')
         .eq('unit_id', opsUnit.id)
@@ -92,7 +92,7 @@ const GuestPortal = () => {
       }
       const guestName = (booking as any).resort_ops_guests?.full_name || '';
 
-      await (supabase.from('resort_ops_bookings') as any).update({
+      await (kapwaClient.from('resort_ops_bookings') as any).update({
         last_guest_login: new Date().toISOString(),
         guest_login_count: (booking as any).guest_login_count ? (booking as any).guest_login_count + 1 : 1,
       }).eq('id', booking.id);
@@ -145,7 +145,7 @@ const GuestPortal = () => {
     queryKey: ['guest-portal-booking', session?.booking_id],
     queryFn: async () => {
       if (!session) return null;
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('resort_ops_bookings')
         .select('check_in, check_out, adults, children, platform')
         .eq('id', session.booking_id)
@@ -161,9 +161,9 @@ const GuestPortal = () => {
     queryFn: async () => {
       if (!session) return 0;
       const [reqs, orders] = await Promise.all([
-        supabase.from('guest_requests').select('id', { count: 'exact', head: true })
+        kapwaClient.from('guest_requests').select('id', { count: 'exact', head: true })
           .eq('booking_id', session.booking_id).in('status', ['pending', 'in_progress']),
-        supabase.from('orders').select('id', { count: 'exact', head: true })
+        kapwaClient.from('orders').select('id', { count: 'exact', head: true })
           .eq('room_id', session.room_id).in('status', ['New', 'Preparing', 'Ready']),
       ]);
       return (reqs.count || 0) + (orders.count || 0);
@@ -576,7 +576,7 @@ const MessageReceptionView = ({ session, qc, onDone }: { session: GuestPortalSes
   const send = async () => {
     if (!message.trim()) return;
     setSubmitting(true);
-    await supabase.from('guest_requests').insert({
+    await kapwaClient.from('guest_requests').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
@@ -627,7 +627,7 @@ const ToursView = ({ session, qc }: { session: GuestPortalSession; qc: any }) =>
   const { data: tours = [] } = useQuery({
     queryKey: ['tours-guest'],
     queryFn: async () => {
-      const { data } = await supabase.from('tours_config').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('tours_config').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -643,7 +643,7 @@ const ToursView = ({ session, qc }: { session: GuestPortalSession; qc: any }) =>
     setSubmitting(true);
     const totalPrice = selectedTour.price * (parseInt(pax) || 1);
     // Create pending booking — NO room charge yet
-    await (supabase.from('tour_bookings') as any).insert({
+    await (kapwaClient.from('tour_bookings') as any).insert({
       booking_id: session.booking_id,
       guest_name: session.guest_name,
       tour_name: selectedTour.name,
@@ -718,7 +718,7 @@ const TransportView = ({ session, qc }: { session: GuestPortalSession; qc: any }
   const { data: rates = [] } = useQuery({
     queryKey: ['transport-guest'],
     queryFn: async () => {
-      const { data } = await supabase.from('transport_rates').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('transport_rates').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -733,7 +733,7 @@ const TransportView = ({ session, qc }: { session: GuestPortalSession; qc: any }
     const label = `${selectedRate.origin} → ${selectedRate.destination}`;
     // Create pending request — NO room charge yet
     const transportDetail = `${label} — ₱${selectedRate.price} — ${pickupDate} ${pickupTime}`;
-    await supabase.from('guest_requests').insert({
+    await kapwaClient.from('guest_requests').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
@@ -793,7 +793,7 @@ const RentalsView = ({ session, qc }: { session: GuestPortalSession; qc: any }) 
   const { data: rates = [] } = useQuery({
     queryKey: ['rentals-guest'],
     queryFn: async () => {
-      const { data } = await supabase.from('rental_rates').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('rental_rates').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -823,7 +823,7 @@ const RentalsView = ({ session, qc }: { session: GuestPortalSession; qc: any }) 
     setSubmitting(true);
     const detail = `${selectedType} — ${selectedRate.rate_name} × ${qty} — ₱${totalPrice} — Start: ${startDate}${notes.trim() ? ` — Notes: ${notes.trim()}` : ''}`;
     // Create pending request — NO room charge yet
-    await supabase.from('guest_requests').insert({
+    await kapwaClient.from('guest_requests').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
@@ -921,7 +921,7 @@ const RequestView = ({ session, qc }: { session: GuestPortalSession; qc: any }) 
   const { data: categories = [] } = useQuery({
     queryKey: ['request-cats-guest'],
     queryFn: async () => {
-      const { data } = await supabase.from('request_categories').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('request_categories').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -932,7 +932,7 @@ const RequestView = ({ session, qc }: { session: GuestPortalSession; qc: any }) 
   const submit = async () => {
     if (!type || !details.trim()) return;
     setSubmitting(true);
-    await supabase.from('guest_requests').insert({
+    await kapwaClient.from('guest_requests').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
@@ -972,7 +972,7 @@ const ReviewView = ({ session, qc, onDone }: { session: GuestPortalSession; qc: 
   const { data: categories = [] } = useQuery({
     queryKey: ['review-cats-guest'],
     queryFn: async () => {
-      const { data } = await supabase.from('review_settings').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('review_settings').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -982,7 +982,7 @@ const ReviewView = ({ session, qc, onDone }: { session: GuestPortalSession; qc: 
 
   const submit = async () => {
     setSubmitting(true);
-    await supabase.from('guest_reviews').insert({
+    await kapwaClient.from('guest_reviews').insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       guest_name: session.guest_name,
@@ -1058,13 +1058,13 @@ const OrdersView = ({ session }: { session: GuestPortalSession }) => {
     queryKey: ['guest-orders', session.room_id, session.room_name],
     queryFn: async () => {
       // Primary: orders linked by room_id
-      const { data: byRoom } = await supabase
+      const { data: byRoom } = await kapwaClient
         .from('orders')
         .select('*')
         .eq('room_id', session.room_id)
         .order('created_at', { ascending: false });
       // Fallback: orders where room_id is null but location_detail matches room name
-      const { data: byLocation } = await supabase
+      const { data: byLocation } = await kapwaClient
         .from('orders')
         .select('*')
         .is('room_id', null)
@@ -1078,7 +1078,7 @@ const OrdersView = ({ session }: { session: GuestPortalSession }) => {
   });
 
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('guest-order-updates')
       .on('postgres_changes', {
         event: '*',
@@ -1100,7 +1100,7 @@ const OrdersView = ({ session }: { session: GuestPortalSession }) => {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [session.room_id, session.room_name, qc]);
 
   return (
@@ -1205,7 +1205,7 @@ const RequestsTrackerView = ({ session }: { session: GuestPortalSession }) => {
   const { data: tours = [] } = useQuery({
     queryKey: ['guest-my-tours', session.booking_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('guest_tours')
         .select('*')
         .eq('booking_id', session.booking_id)
@@ -1217,7 +1217,7 @@ const RequestsTrackerView = ({ session }: { session: GuestPortalSession }) => {
   const { data: requests = [] } = useQuery({
     queryKey: ['guest-my-requests', session.booking_id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('guest_requests')
         .select('*')
         .eq('booking_id', session.booking_id)
@@ -1228,7 +1228,7 @@ const RequestsTrackerView = ({ session }: { session: GuestPortalSession }) => {
 
   // Realtime subscriptions
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('guest-requests-realtime')
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'guest_tours',
@@ -1239,7 +1239,7 @@ const RequestsTrackerView = ({ session }: { session: GuestPortalSession }) => {
         filter: `booking_id=eq.${session.booking_id}`,
       }, () => { qc.invalidateQueries({ queryKey: ['guest-my-requests', session.booking_id] }); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [session.booking_id, qc]);
 
   const hasAny = tours.length > 0 || requests.length > 0;
@@ -1320,7 +1320,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: bookingData, refetch: refetchBooking } = useQuery({
     queryKey: ['guest-bill-agreement', session.booking_id],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('bill_agreed_at, room_rate, check_in, check_out, platform, paid_amount').eq('id', session.booking_id).maybeSingle();
+      const { data } = await kapwaClient.from('resort_ops_bookings').select('bill_agreed_at, room_rate, check_in, check_out, platform, paid_amount').eq('id', session.booking_id).maybeSingle();
       return data as any;
     },
   });
@@ -1334,7 +1334,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
 
   const handleAgree = async () => {
     setAgreeing(true);
-    await (supabase.from('resort_ops_bookings') as any).update({ bill_agreed_at: new Date().toISOString() }).eq('id', session.booking_id);
+    await (kapwaClient.from('resort_ops_bookings') as any).update({ bill_agreed_at: new Date().toISOString() }).eq('id', session.booking_id);
     await refetchBooking();
     setAgreeing(false);
     toast.success('Bill agreed! Reception has been notified.');
@@ -1344,11 +1344,11 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
     queryKey: ['guest-bill', session.booking_id, session.room_id],
     queryFn: async () => {
       // Fetch by booking_id OR by unit_id (for transactions missing booking_id)
-      const { data: byBooking } = await (supabase.from('room_transactions') as any)
+      const { data: byBooking } = await (kapwaClient.from('room_transactions') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .order('created_at', { ascending: false });
-      const { data: byUnit } = await (supabase.from('room_transactions') as any)
+      const { data: byUnit } = await (kapwaClient.from('room_transactions') as any)
         .select('*')
         .eq('unit_id', session.room_id)
         .is('booking_id', null)
@@ -1364,13 +1364,13 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: unpaidOrders = [] } = useQuery({
     queryKey: ['guest-bill-unpaid-orders', session.room_id, session.room_name],
     queryFn: async () => {
-      const { data: byRoom } = await supabase
+      const { data: byRoom } = await kapwaClient
         .from('orders')
         .select('id, total, service_charge, guest_name, status, payment_type, created_at, items')
         .eq('room_id', session.room_id)
         .in('status', ['New', 'Preparing', 'Ready', 'Served'])
         .is('payment_type', null);
-      const { data: byLocation } = await supabase
+      const { data: byLocation } = await kapwaClient
         .from('orders')
         .select('id, total, service_charge, guest_name, status, payment_type, created_at, items')
         .is('room_id', null)
@@ -1387,13 +1387,13 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: roomChargedOrders = [] } = useQuery({
     queryKey: ['guest-bill-room-charged-orders', session.room_id, session.room_name],
     queryFn: async () => {
-      const { data: byRoom } = await supabase
+      const { data: byRoom } = await kapwaClient
         .from('orders')
         .select('id, total, service_charge, guest_name, status, payment_type, created_at, items')
         .eq('room_id', session.room_id)
         .eq('payment_type', 'Charge to Room')
         .in('status', ['Served']);
-      const { data: byLocation } = await supabase
+      const { data: byLocation } = await kapwaClient
         .from('orders')
         .select('id, total, service_charge, guest_name, status, payment_type, created_at, items')
         .is('room_id', null)
@@ -1410,7 +1410,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: pendingTours = [] } = useQuery({
     queryKey: ['guest-bill-pending-tours', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any)
+      const { data } = await (kapwaClient.from('tour_bookings') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .in('status', ['booked', 'pending', 'confirmed']);
@@ -1422,7 +1422,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: completedTours = [] } = useQuery({
     queryKey: ['guest-bill-completed-tours', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('tour_bookings') as any)
+      const { data } = await (kapwaClient.from('tour_bookings') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .in('status', ['completed']);
@@ -1434,7 +1434,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: pendingRequests = [] } = useQuery({
     queryKey: ['guest-bill-pending-requests', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_requests') as any)
+      const { data } = await (kapwaClient.from('guest_requests') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .eq('status', 'pending');
@@ -1446,7 +1446,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: completedRequests = [] } = useQuery({
     queryKey: ['guest-bill-completed-requests', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_requests') as any)
+      const { data } = await (kapwaClient.from('guest_requests') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .eq('status', 'completed');
@@ -1458,7 +1458,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const { data: disputes = [] } = useQuery({
     queryKey: ['guest-bill-disputes', session.booking_id],
     queryFn: async () => {
-      const { data } = await (supabase.from('bill_disputes') as any)
+      const { data } = await (kapwaClient.from('bill_disputes') as any)
         .select('*')
         .eq('booking_id', session.booking_id)
         .order('created_at', { ascending: false });
@@ -1469,7 +1469,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
   const handleContestSubmit = async () => {
     if (!disputeMessage.trim()) return;
     setSubmittingDispute(true);
-    await (supabase.from('bill_disputes') as any).insert({
+    await (kapwaClient.from('bill_disputes') as any).insert({
       booking_id: session.booking_id,
       room_id: session.room_id,
       unit_name: session.room_name,
@@ -1485,7 +1485,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
 
   // Realtime subscription — broadened to catch all DELETE events
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('guest-bill-realtime')
       .on('postgres_changes', {
         event: '*', schema: 'public', table: 'room_transactions',
@@ -1519,7 +1519,7 @@ const BillView = ({ session }: { session: GuestPortalSession }) => {
         qc.invalidateQueries({ queryKey: ['guest-bill-disputes', session.booking_id] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [session.booking_id, session.room_id, qc]);
 
   const otaPlatforms = ['booking.com', 'airbnb', 'agoda', 'expedia', 'hostelworld', 'trip.com'];

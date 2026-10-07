@@ -1,21 +1,15 @@
 /**
- * The authoritative classification of every Supabase Edge Function.
+ * The authoritative classification of every KAPWA Backend Service Function.
  *
- * This mirrors `supabase/config.toml`. `edgeFunctions.test.ts` parses that file
- * and fails if the two disagree, because the failure mode is silent and
- * expensive: a function directory with no `[functions.<name>]` entry inherits
- * `verify_jwt = true`, and since this project authenticates the browser with an
- * opaque `sb_publishable_` key — which the gateway cannot validate as a JWT —
- * the gateway answers 401 before the handler ever runs.
- *
- * That is what happened to `employee-auth`: it lost its entry when the project
- * was switched, so login could be rejected before the PIN was checked.
+ * This mirrors `server/services/functions.js`. `edgeFunctions.test.ts` parses
+ * that file and fails if any function in `EDGE_FUNCTIONS` is missing from the
+ * backend dispatcher or lacks its required authorization guard.
  */
 
 export type FunctionClass =
   /** Unauthenticated by design — guest-facing, or the login endpoint itself. */
   | 'public'
-  /** Requires a staff JWT, enforced in-handler by _shared/auth.ts. */
+  /** Requires a staff JWT, enforced in-handler by server/services/auth.js. */
   | 'staff'
   /** Requires the INTERNAL_FN_SECRET header. Cron / server-to-server. */
   | 'internal'
@@ -51,11 +45,11 @@ export const EDGE_FUNCTIONS: EdgeFunctionSpec[] = [
   { name: 'process-webhook-queue', class: 'internal', called: false,
     note: 'Queue drain, intended to run on a schedule.' },
   { name: 'admin-summary', class: 'internal', called: false,
-    note: 'Orphaned. INTERNAL_FN_SECRET; intended for a cron/monitor caller.' },
+    note: 'INTERNAL_FN_SECRET; intended for a cron/monitor caller.' },
   { name: 'concierge-ai', class: 'internal', called: false,
     note: 'Guest-request routing loop. Invoked by resort-agent-loop with the internal secret.' },
   { name: 'guest-requests-api', class: 'internal', called: false,
-    note: 'Orphaned. INTERNAL_FN_SECRET.' },
+    note: 'INTERNAL_FN_SECRET.' },
   { name: 'guest-whatsapp', class: 'internal', called: false,
     note: 'Outbound WhatsApp bridge invoked by resort-operator with INTERNAL_FN_SECRET.' },
   { name: 'reservations-ai', class: 'internal', called: false,
@@ -72,26 +66,23 @@ export const EDGE_FUNCTIONS: EdgeFunctionSpec[] = [
     note: 'Receipt OCR for expense capture.' },
   { name: 'ops-coordinator', class: 'staff', called: true,
     note: 'Morning/evening operational brief.' },
-
-  // Deployed and guarded, but nothing in this repository calls them yet. They
-  // are reachable endpoints, so they are guarded rather than assumed unused.
-  { name: 'forecast-7day', class: 'staff', called: false,
-    note: 'Orphaned: no frontend caller.' },
+  { name: 'forecast-7day', class: 'staff', called: true,
+    note: '7-day occupancy and revenue forecast.' },
   { name: 'frontdesk-today', class: 'staff', called: false,
-    note: 'Orphaned: no frontend caller.' },
-  { name: 'guest-search', class: 'staff', called: false,
-    note: 'Orphaned: returns guest PII, so it is staff-guarded regardless.' },
+    note: 'Front desk daily summary.' },
+  { name: 'guest-search', class: 'staff', called: true,
+    note: 'Returns guest PII and booking history; staff-guarded.' },
   { name: 'housekeeping', class: 'staff', called: false,
-    note: 'Orphaned: read-only summary. HousekeeperPage queries the table directly and does not use this.' },
+    note: 'Read-only housekeeping summary.' },
   { name: 'orders-today', class: 'staff', called: false,
-    note: 'Orphaned: no frontend caller.' },
-  { name: 'resort-agent-loop', class: 'staff', called: false,
-    note: 'Orphaned: fans out to the other agent functions.' },
-  { name: 'today-ops', class: 'staff', called: false,
-    note: 'Orphaned: no frontend caller.' },
+    note: 'Active daily F&B orders.' },
+  { name: 'resort-agent-loop', class: 'staff', called: true,
+    note: 'Fans out to ops-coordinator, concierge-ai, reservations-ai, and resort-operator.' },
+  { name: 'today-ops', class: 'staff', called: true,
+    note: 'Live operational snapshot.' },
   { name: 'tours-today', class: 'staff', called: false,
-    note: 'Orphaned: no frontend caller.' },
+    note: 'Active daily tours.' },
 ];
 
-/** Functions no caller in this repository invokes. */
+/** Functions no caller in this repository invokes directly from the UI. */
 export const ORPHANED_FUNCTIONS = EDGE_FUNCTIONS.filter(f => !f.called).map(f => f.name);

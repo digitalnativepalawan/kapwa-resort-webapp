@@ -8,7 +8,7 @@ export interface StaffSession {
   employeeId: string;
   isAdmin?: boolean;
   permissions: string[];
-  /** Supabase-compatible JWT minted by employee-auth. Absent when STAFF_JWT_SECRET
+  /** KAPWA-compatible JWT minted by employee-auth. Absent when STAFF_JWT_SECRET
    *  is not configured server-side (falls back to anon-key behavior). */
   token?: string;
   expiresAt: number;
@@ -71,7 +71,7 @@ export const isRemembered = (): boolean => {
   return localStorage.getItem(REMEMBER_FLAG) === '1';
 };
 
-/** The current staff JWT, if one was issued at login. Used by the Supabase client
+/** The current staff JWT, if one was issued at login. Used by the KAPWA client
  *  to authenticate requests once RLS enforces claim-based access. */
 export const getStaffToken = (): string | null => {
   return getStaffSession()?.token ?? null;

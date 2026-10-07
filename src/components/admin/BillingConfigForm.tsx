@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useBillingConfig } from '@/hooks/useBillingConfig';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { Input } from '@/components/ui/input';
@@ -95,9 +95,9 @@ const BillingConfigForm = () => {
       };
 
       if (config?.id) {
-        await (supabase.from('billing_config' as any) as any).update(payload).eq('id', config.id);
+        await (kapwaClient.from('billing_config' as any) as any).update(payload).eq('id', config.id);
       } else {
-        await (supabase.from('billing_config' as any) as any).insert(payload);
+        await (kapwaClient.from('billing_config' as any) as any).insert(payload);
       }
       qc.invalidateQueries({ queryKey: ['billing-config'] });
       toast.success('Billing configuration saved');
@@ -111,7 +111,7 @@ const BillingConfigForm = () => {
   const addMethod = async () => {
     if (!newMethod.trim()) return;
     const maxSort = methods.reduce((m, p) => Math.max(m, p.sort_order), 0);
-    await (supabase.from('payment_methods' as any) as any).insert({
+    await (kapwaClient.from('payment_methods' as any) as any).insert({
       name: newMethod.trim(),
       sort_order: maxSort + 1,
     });
@@ -121,12 +121,12 @@ const BillingConfigForm = () => {
   };
 
   const toggleMethod = async (id: string, active: boolean) => {
-    await (supabase.from('payment_methods' as any) as any).update({ is_active: active }).eq('id', id);
+    await (kapwaClient.from('payment_methods' as any) as any).update({ is_active: active }).eq('id', id);
     qc.invalidateQueries({ queryKey: ['payment-methods'] });
   };
 
   const deleteMethod = async (id: string) => {
-    await (supabase.from('payment_methods' as any) as any).delete().eq('id', id);
+    await (kapwaClient.from('payment_methods' as any) as any).delete().eq('id', id);
     qc.invalidateQueries({ queryKey: ['payment-methods'] });
     toast.success('Payment method removed');
   };

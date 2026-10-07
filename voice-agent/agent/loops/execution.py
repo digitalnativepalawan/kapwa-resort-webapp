@@ -2,7 +2,7 @@
 EXECUTION LOOP
 
 Given a Plan (from the Planner Loop) with one or more tool calls, runs them
-(sequentially -- KAPWA OS's Supabase free tier + a 8B local model don't need
+(sequentially -- KAPWA OS's Neon PostgreSQL free tier + a 8B local model don't need
 concurrency complexity here), collects ToolResults, then makes a SECOND
 call to Qwen with the tool results appended so it can generate the final
 spoken response grounded in real data.

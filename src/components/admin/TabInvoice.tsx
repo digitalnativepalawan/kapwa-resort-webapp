@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { useInvoiceSettings } from '@/hooks/useInvoiceSettings';
 import { Button } from '@/components/ui/button';
@@ -109,7 +109,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const { data: tab } = useQuery({
     queryKey: ['tab', tabId],
     queryFn: async () => {
-      const { data } = await supabase.from('tabs').select('*').eq('id', tabId).single();
+      const { data } = await kapwaClient.from('tabs').select('*').eq('id', tabId).single();
       return data;
     },
   });
@@ -117,7 +117,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const { data: orders = [] } = useQuery({
     queryKey: ['tab-orders', tabId],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .eq('tab_id', tabId)
@@ -129,7 +129,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-items-available'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('menu_items')
         .select('*')
         .eq('available', true)
@@ -143,7 +143,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const { data: menuCategories = [] } = useQuery({
     queryKey: ['menu-categories-active'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('menu_categories')
         .select('*')
         .eq('active', true)
@@ -200,7 +200,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
       const total = cartTotal;
       const serviceCharge = cartServiceCharge;
 
-      await supabase.from('orders').insert({
+      await kapwaClient.from('orders').insert({
         tab_id: tabId,
         order_type: tab.location_type,
         location_detail: tab.location_detail,
@@ -230,7 +230,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
     }
     setClosing(true);
     try {
-      await supabase.from('tabs').update({
+      await kapwaClient.from('tabs').update({
         status: 'Closed',
         payment_method: paymentMethod,
         closed_at: new Date().toISOString(),
@@ -238,7 +238,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
 
       const orderIds = orders.map(o => o.id);
       if (orderIds.length > 0) {
-        await supabase.from('orders').update({
+        await kapwaClient.from('orders').update({
           status: 'Paid',
           payment_type: paymentMethod,
           closed_at: new Date().toISOString(),
@@ -258,7 +258,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
 
   const deleteOrderFromTab = async (orderId: string) => {
     try {
-      await supabase.from('orders').delete().eq('id', orderId);
+      await kapwaClient.from('orders').delete().eq('id', orderId);
       qc.invalidateQueries({ queryKey: ['tab-orders', tabId] });
       qc.invalidateQueries({ queryKey: ['orders-admin'] });
       setConfirmDeleteOrder(null);
@@ -273,9 +273,9 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
       // Delete all orders in the tab first
       const orderIds = orders.map(o => o.id);
       if (orderIds.length > 0) {
-        await supabase.from('orders').delete().in('id', orderIds);
+        await kapwaClient.from('orders').delete().in('id', orderIds);
       }
-      await supabase.from('tabs').delete().eq('id', tabId);
+      await kapwaClient.from('tabs').delete().eq('id', tabId);
       qc.invalidateQueries({ queryKey: ['tabs-admin'] });
       qc.invalidateQueries({ queryKey: ['orders-admin'] });
       toast.success('Tab deleted');
@@ -288,7 +288,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
   const updateOrderItems = async (orderId: string, updatedItems: OrderItem[]) => {
     const newTotal = updatedItems.reduce((s, i) => s + i.price * i.qty, 0);
     const newSc = Math.round(newTotal * (scPct / 100));
-    await supabase.from('orders').update({
+    await kapwaClient.from('orders').update({
       items: updatedItems as any,
       total: newTotal,
       service_charge: newSc,
@@ -558,7 +558,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
             const staffName = staffSession?.name || 'Staff';
             const today = new Date().toISOString().slice(0, 10);
 
-            const { data: bookings } = await supabase
+            const { data: bookings } = await kapwaClient
               .from('resort_ops_bookings')
               .select('id, unit_id, guest_id, resort_ops_guests(full_name), resort_ops_units:unit_id(name)')
               .lte('check_in', today)
@@ -571,7 +571,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
               return unitName && unitName === loc;
             }) as any;
 
-            await supabase.from('tabs').update({
+            await kapwaClient.from('tabs').update({
               status: 'Closed',
               payment_method: 'Charge to Room',
               closed_at: new Date().toISOString(),
@@ -579,7 +579,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
 
             const orderIds = orders.map(o => o.id);
             if (orderIds.length > 0) {
-              await supabase.from('orders').update({
+              await kapwaClient.from('orders').update({
                 status: 'Paid',
                 payment_type: 'Charge to Room',
                 closed_at: new Date().toISOString(),
@@ -593,7 +593,7 @@ const TabInvoice = ({ tabId, onClose, isAdmin }: TabInvoiceProps) => {
               const orderSc = Number(order.service_charge || 0);
               const orderTotal = orderSubtotal + orderSc;
 
-              await (supabase.from('room_transactions' as any) as any).insert({
+              await (kapwaClient.from('room_transactions' as any) as any).insert({
                 unit_id: booking?.unit_id || null,
                 unit_name: booking?.resort_ops_units?.name || tab.location_detail || '',
                 guest_name: booking?.resort_ops_guests?.full_name || tab.guest_name || '',

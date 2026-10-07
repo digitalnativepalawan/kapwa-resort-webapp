@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { deductInventoryForOrder } from '@/lib/inventoryDeduction';
 import { getStaffSession } from '@/lib/session';
 import { toast } from 'sonner';
@@ -71,13 +71,13 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
 
   // Realtime
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel(`service-board-${department}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['service-orders'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc, department]);
 
   // Auto-refresh every 5s
@@ -86,7 +86,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('status', ['New', 'Preparing', 'Ready', 'Served', 'Paid'])
@@ -211,7 +211,7 @@ const ServiceBoard = ({ department }: ServiceBoardProps) => {
       updateData.closed_at = new Date().toISOString();
     }
 
-    await supabase.from('orders').update(updateData).eq('id', orderId);
+    await kapwaClient.from('orders').update(updateData).eq('id', orderId);
     qc.invalidateQueries({ queryKey: ['service-orders'] });
     toast.success('Order updated');
   };

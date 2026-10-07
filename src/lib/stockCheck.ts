@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export interface Shortage {
   itemName: string;
@@ -25,7 +25,7 @@ export async function checkStock(
   const itemNames = cartItems.map(i => i.name);
 
   // Get menu items matching cart
-  const { data: menuItems } = await supabase
+  const { data: menuItems } = await kapwaClient
     .from('menu_items')
     .select('id, name')
     .in('name', itemNames);
@@ -34,7 +34,7 @@ export async function checkStock(
 
   // Get recipes with ingredient data
   const menuItemIds = menuItems.map(m => m.id);
-  const { data: recipes } = await supabase
+  const { data: recipes } = await kapwaClient
     .from('recipe_ingredients')
     .select('menu_item_id, ingredient_id, quantity, ingredients(id, name, current_stock, unit)')
     .in('menu_item_id', menuItemIds);
@@ -111,7 +111,7 @@ export async function getMenuItemStockStatus(): Promise<
   Record<string, { soldOut: boolean; lowStock: boolean }>
 > {
   // Get all recipes with ingredient stock
-  const { data: recipes } = await supabase
+  const { data: recipes } = await kapwaClient
     .from('recipe_ingredients')
     .select('menu_item_id, quantity, ingredients(id, current_stock, low_stock_threshold, unit)');
 

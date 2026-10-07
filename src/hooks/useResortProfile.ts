@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export interface ResortProfile {
   id: string;
@@ -25,7 +25,7 @@ export const useResortProfile = () => {
   return useQuery({
     queryKey: ['resort-profile'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('resort_profile')
         .select('*')
         .limit(1)

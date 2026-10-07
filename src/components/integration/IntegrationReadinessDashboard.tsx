@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,7 @@ const IntegrationReadinessDashboard = () => {
     queryKey: ['webhook-events'],
     enabled: isDev,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('webhook_events' as any)
         .select('*')
         .order('created_at', { ascending: false })
@@ -37,13 +37,13 @@ const IntegrationReadinessDashboard = () => {
     queryFn: async () => {
       // Check if new columns exist by querying a booking
       try {
-        const { data, error } = await supabase
+        const { data, error } = await kapwaClient
           .from('resort_ops_bookings')
           .select('source, external_reservation_id, last_synced_at, external_data')
           .limit(1);
         const bookingColumnsOk = !error;
 
-        const { error: weErr } = await supabase
+        const { error: weErr } = await kapwaClient
           .from('webhook_events' as any)
           .select('id')
           .limit(1);
@@ -100,7 +100,7 @@ const IntegrationReadinessDashboard = () => {
   const clearTestEvents = async () => {
     setSending(true);
     try {
-      await supabase
+      await kapwaClient
         .from('webhook_events' as any)
         .delete()
         .eq('source', 'simulation');

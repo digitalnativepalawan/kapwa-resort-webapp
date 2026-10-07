@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, CheckCircle, Clock, ClipboardCheck, BarChart3, UserCheck } from 'lucide-react';
@@ -12,7 +12,7 @@ import QueryErrorBanner from '@/components/QueryErrorBanner';
 import { getStaffSession } from '@/lib/session';
 import { hasAccess, canEdit } from '@/lib/permissions';
 
-const from = (table: string) => supabase.from(table as any);
+const from = (table: string) => kapwaClient.from(table as any);
 
 const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
   const navigate = useNavigate();
@@ -54,7 +54,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
 
   // Realtime subscription for new housekeeping orders — play chime on INSERT
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('housekeeping-orders-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'housekeeping_orders' }, () => {
         playChime();
@@ -65,7 +65,7 @@ const HousekeeperPage = ({ embedded = false }: { embedded?: boolean }) => {
         qc.invalidateQueries({ queryKey: ['housekeeping-orders-all'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [playChime, qc]);
 
   const empId = localStorage.getItem('emp_id');

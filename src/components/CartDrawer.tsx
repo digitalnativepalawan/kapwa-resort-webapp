@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useCart } from '@/lib/cart';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { formatWhatsAppMessage, buildWhatsAppUrl } from '@/lib/order';
@@ -25,7 +25,7 @@ const TabPicker = ({ tabMode, setTabMode, selectedTabId, setSelectedTabId }: {
   const { data: openTabs = [] } = useQuery({
     queryKey: ['open-tabs-picker'],
     queryFn: async () => {
-      const { data } = await supabase.from('tabs').select('*').eq('status', 'Open').order('created_at', { ascending: false });
+      const { data } = await kapwaClient.from('tabs').select('*').eq('status', 'Open').order('created_at', { ascending: false });
       return data || [];
     },
   });
@@ -137,7 +137,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const { data: orderTypes = [] } = useQuery({
     queryKey: ['order-types-cart'],
     queryFn: async () => {
-      const { data } = await supabase.from('order_types').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('order_types').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -145,7 +145,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const { data: kitchenSettings } = useQuery({
     queryKey: ['settings'],
     queryFn: async () => {
-      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const { data } = await kapwaClient.from('settings').select('*').limit(1).maybeSingle();
       return data;
     },
   });
@@ -153,7 +153,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const { data: units } = useQuery({
     queryKey: ['units'],
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').eq('active', true).order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').eq('active', true).order('unit_name');
       return data || [];
     },
   });
@@ -161,7 +161,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
   const { data: tables } = useQuery({
     queryKey: ['resort_tables'],
     queryFn: async () => {
-      const { data } = await supabase.from('resort_tables').select('*').eq('active', true).order('table_name');
+      const { data } = await kapwaClient.from('resort_tables').select('*').eq('active', true).order('table_name');
       return data || [];
     },
   });
@@ -217,7 +217,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
 
     setSubmitting(true);
     try {
-      const { data: existingTabs } = await supabase
+      const { data: existingTabs } = await kapwaClient
         .from('tabs')
         .select('*')
         .eq('location_type', selectedOrderType)
@@ -230,7 +230,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       if (existingTabs && existingTabs.length > 0) {
         tabId = existingTabs[0].id;
       } else {
-        const { data: newTab, error: tabError } = await supabase
+        const { data: newTab, error: tabError } = await kapwaClient
           .from('tabs')
           .insert({
             location_type: selectedOrderType,
@@ -261,7 +261,7 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       if (roomUnit) {
         try {
           const today = new Date().toISOString().slice(0, 10);
-          const { data: activeBooking } = await supabase
+          const { data: activeBooking } = await kapwaClient
             .from('resort_ops_bookings')
             .select('id, guest_id, resort_ops_guests(full_name)')
             .eq('unit_id', roomUnit.id)
@@ -311,12 +311,12 @@ const CartDrawer = ({ open, onOpenChange, mode, orderType: initialOrderType, loc
       };
       if (scheduledFor) insertData.scheduled_for = scheduledFor;
 
-      const { data: orderRow } = await supabase.from('orders').insert(insertData).select('id').single();
+      const { data: orderRow } = await kapwaClient.from('orders').insert(insertData).select('id').single();
       console.log('✅ Order inserted:', orderRow, 'with items:', insertData.items);
 
       // Auto-create room_transaction when "Charge to Room"
       if ((resolvedPayment === 'Charge to Room' || isGuestOrder) && roomUnit && orderRow) {
-        await (supabase.from('room_transactions' as any) as any).insert({
+        await (kapwaClient.from('room_transactions' as any) as any).insert({
           unit_id: roomUnit.id,
           unit_name: selectedLocation,
           booking_id: resolvedBookingId || (guestSession?.booking_id ?? null),

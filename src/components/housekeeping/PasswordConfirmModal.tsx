@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
 
@@ -23,7 +23,7 @@ const PasswordConfirmModal = ({ open, onClose, onConfirm, title = 'Confirm with 
     if (!name.trim() || !pin) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('employee-auth', {
+      const { data, error } = await kapwaClient.functions.invoke('employee-auth', {
         body: { action: 'verify', name: name.trim(), pin },
       });
       if (error || data?.error) {

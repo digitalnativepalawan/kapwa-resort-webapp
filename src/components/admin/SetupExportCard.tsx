@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import JSZip from 'jszip';
 import { format } from 'date-fns';
 import { Download, FileArchive, ShieldAlert } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -111,23 +111,23 @@ const SetupExportCard = () => {
         staffRolesResult,
         guestFaqMemoryResult,
       ] = await Promise.all([
-        supabase.from('resort_profile').select('*').order('created_at'),
-        (supabase.from('invoice_settings' as any) as any).select('*').order('created_at'),
-        (supabase.from('billing_config' as any) as any).select('*').order('created_at'),
-        (supabase.from('payment_methods' as any) as any).select('*').order('sort_order'),
-        supabase.from('resort_tables').select('*').order('table_name'),
-        supabase.from('order_types').select('*').order('sort_order'),
-        supabase.from('menu_categories').select('*').order('sort_order'),
-        supabase.from('room_types').select('*').order('name'),
-        supabase.from('housekeeping_checklists').select('*').order('sort_order'),
-        (supabase.from('cleaning_packages' as any) as any).select('*').order('name'),
-        (supabase.from('cleaning_package_items' as any) as any).select('*'),
-        supabase.from('ingredients').select('id, name').order('name'),
-        supabase.from('employees').select('*').order('name'),
-        supabase.from('employee_roles').select('*').order('created_at'),
-        (supabase.from('employee_permissions' as any) as any).select('*').order('created_at'),
-        (supabase.from('staff_roles' as any) as any).select('*').order('created_at'),
-        (supabase.from('guest_faq_memory' as any) as any).select('*').order('sort_order'),
+        kapwaClient.from('resort_profile').select('*').order('created_at'),
+        (kapwaClient.from('invoice_settings' as any) as any).select('*').order('created_at'),
+        (kapwaClient.from('billing_config' as any) as any).select('*').order('created_at'),
+        (kapwaClient.from('payment_methods' as any) as any).select('*').order('sort_order'),
+        kapwaClient.from('resort_tables').select('*').order('table_name'),
+        kapwaClient.from('order_types').select('*').order('sort_order'),
+        kapwaClient.from('menu_categories').select('*').order('sort_order'),
+        kapwaClient.from('room_types').select('*').order('name'),
+        kapwaClient.from('housekeeping_checklists').select('*').order('sort_order'),
+        (kapwaClient.from('cleaning_packages' as any) as any).select('*').order('name'),
+        (kapwaClient.from('cleaning_package_items' as any) as any).select('*'),
+        kapwaClient.from('ingredients').select('id, name').order('name'),
+        kapwaClient.from('employees').select('*').order('name'),
+        kapwaClient.from('employee_roles').select('*').order('created_at'),
+        (kapwaClient.from('employee_permissions' as any) as any).select('*').order('created_at'),
+        (kapwaClient.from('staff_roles' as any) as any).select('*').order('created_at'),
+        (kapwaClient.from('guest_faq_memory' as any) as any).select('*').order('sort_order'),
       ]);
 
       const results = [

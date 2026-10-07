@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +23,7 @@ const VibeDetailView = ({ record, onBack, onEdit }: Props) => {
   const { data: updates = [] } = useQuery({
     queryKey: ['vibe-updates', record.id],
     queryFn: async () => {
-      const { data } = await (supabase.from('vibe_updates' as any) as any)
+      const { data } = await (kapwaClient.from('vibe_updates' as any) as any)
         .select('*').eq('vibe_record_id', record.id).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
@@ -32,7 +32,7 @@ const VibeDetailView = ({ record, onBack, onEdit }: Props) => {
   const { data: interventions = [] } = useQuery({
     queryKey: ['interventions', record.id],
     queryFn: async () => {
-      const { data } = await (supabase.from('interventions' as any) as any)
+      const { data } = await (kapwaClient.from('interventions' as any) as any)
         .select('*').eq('vibe_record_id', record.id).order('created_at', { ascending: false });
       return (data || []) as any[];
     },
@@ -40,7 +40,7 @@ const VibeDetailView = ({ record, onBack, onEdit }: Props) => {
 
   const addIntervention = async () => {
     if (!interventionNote.trim()) return;
-    await (supabase.from('interventions' as any) as any).insert({
+    await (kapwaClient.from('interventions' as any) as any).insert({
       vibe_record_id: record.id,
       note: interventionNote.trim(),
     });

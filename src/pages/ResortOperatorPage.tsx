@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { logAudit } from '@/lib/auditLog';
 
 import { askOperator, getRuntimeSettings, runtimeHealth, isRuntimeConfigured } from '@/lib/agentRuntime';
@@ -67,7 +67,7 @@ type FullLoopResult = {
 };
 
 async function invokeFunction<T>(name: string, body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(name, { body });
+  const { data, error } = await kapwaClient.functions.invoke(name, { body });
   if (error) throw error;
   if (data?.ok === false) throw new Error(data.error || `${name} failed`);
   return data as T;
@@ -107,7 +107,7 @@ function toExecutionRequest(action: AgentAction): { action_type: string; payload
 async function executeApprovedAction(action: AgentAction) {
   const request = toExecutionRequest(action);
   if (!request) throw new Error('This action requires manual management execution.');
-  const { data, error } = await supabase.functions.invoke('resort-operator-execute', {
+  const { data, error } = await kapwaClient.functions.invoke('resort-operator-execute', {
     body: { ...request, source_action_id: action.id, decided_by: localStorage.getItem('emp_name') || 'admin' },
   });
   if (error) throw new Error(error.message || 'Execution failed');
@@ -197,7 +197,7 @@ export default function ResortOperatorPage() {
 
       // Kick a resort-operator cycle so ops_cases stays current.
       try {
-        await supabase.functions.invoke('resort-operator', { body: { action: 'cycle' } });
+        await kapwaClient.functions.invoke('resort-operator', { body: { action: 'cycle' } });
       } catch (err) {
         console.warn('[operator] resort-operator cycle failed', err);
       }

@@ -1,1 +1,0 @@
-ALTER TABLE public.employees ADD COLUMN whatsapp_number TEXT NOT NULL DEFAULT '';

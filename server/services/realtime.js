@@ -1,7 +1,7 @@
 /**
  * KAPWA Hospitality OS — Independent Realtime Hub (Server-Sent Events)
  *
- * Replaces Supabase Realtime (`supabase.channel(...).on('postgres_changes', ...)`).
+ * Replaces KAPWA Realtime (`db.channel(...).on('postgres_changes', ...)`).
  * Broadcasts database mutation events (`INSERT`, `UPDATE`, `DELETE`) over SSE
  * to all connected browser clients.
  */

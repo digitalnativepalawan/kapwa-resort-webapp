@@ -1,1 +1,0 @@
-UPDATE order_types SET active = false WHERE type_key IN ('DineIn', 'Friends');

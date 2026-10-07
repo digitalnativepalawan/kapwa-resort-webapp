@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useCart } from '@/lib/cart';
 import { useResortProfile } from '@/hooks/useResortProfile';
 import { getMenuItemStockStatus } from '@/lib/stockCheck';
@@ -54,7 +54,7 @@ const MenuPage = () => {
   const { data: categories = [] } = useQuery({
     queryKey: ['menu-categories'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_categories').select('*').eq('active', true).order('sort_order');
+      const { data } = await kapwaClient.from('menu_categories').select('*').eq('active', true).order('sort_order');
       return data || [];
     },
   });
@@ -68,7 +68,7 @@ const MenuPage = () => {
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu_items'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('*').eq('available', true).order('sort_order');
+      const { data } = await kapwaClient.from('menu_items').select('*').eq('available', true).order('sort_order');
       return (data || []) as MenuItem[];
     },
   });
@@ -104,7 +104,7 @@ const MenuPage = () => {
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { count } = await supabase
+      const { count } = await kapwaClient
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', start.toISOString())
@@ -125,7 +125,7 @@ const MenuPage = () => {
   const { data: menuItemsFull = [] } = useQuery({
     queryKey: ['menu_items_full'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('id, department').order('id');
+      const { data } = await kapwaClient.from('menu_items').select('id, department').order('id');
       return data || [];
     },
   });

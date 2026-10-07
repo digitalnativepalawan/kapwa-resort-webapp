@@ -11,7 +11,7 @@ Automatic execution is limited to:
 
 Booking changes, rate changes, billing resolution, payments, refunds, external guest messages, destructive changes, and deletions remain manual.
 
-No new Supabase project, database, or agent tables are required.
+No new Neon PostgreSQL project, database, or agent tables are required.
 
 ## 1. Configure the agent runtime
 

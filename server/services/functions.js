@@ -1,7 +1,7 @@
 /**
  * KAPWA Hospitality OS — Standalone Node/Express Services
  *
- * Replaces all 24 Supabase Edge Functions with native Node/Express handlers
+ * Replaces all 24 KAPWA Edge Functions with native Node/Express handlers
  * backed by Neon PostgreSQL (or the embedded standalone store).
  */
 
@@ -956,20 +956,131 @@ Extract the following fields from the receipt or invoice image and return ONLY v
         const deny = requireInternalGuard();
         if (deny) return deny;
 
+        const ROUTING_RULES = [
+          { keywords: ['food', 'drink', 'room service', 'breakfast', 'lunch', 'dinner', 'coffee', 'water', 'meal', 'order'], group: 'kitchen', label: 'F&B' },
+          { keywords: ['towel', 'linen', 'sheet', 'pillow', 'blanket', 'clean', 'housekeeping', 'laundry', 'amenity', 'shampoo', 'soap', 'toilet paper'], group: 'housekeeping', label: 'Housekeeping' },
+          { keywords: ['maintenance', 'repair', 'broken', 'leaking', 'air con', 'wifi', 'internet', 'door', 'lock', 'shower', 'plumbing', 'electricity'], group: 'housekeeping', label: 'Maintenance' },
+          { keywords: ['tour', 'trip', 'island', 'snorkel', 'dive', 'boat', 'kayak', 'activity', 'excursion'], group: 'tours', label: 'Tours' },
+          { keywords: ['transport', 'van', 'pickup', 'transfer', 'airport', 'tricycle', 'motorcycle'], group: 'tours', label: 'Transport' },
+          { keywords: ['complaint', 'unhappy', 'unacceptable', 'refund', 'wrong', 'bad', 'poor', 'terrible', 'disgusting'], group: 'managers', label: 'Complaint' },
+          { keywords: ['checkout', 'check out', 'bill', 'invoice', 'payment', 'receipt', 'late', 'early check'], group: 'reception', label: 'Front Desk' },
+        ];
+
+        const routeRequest = (requestType, details) => {
+          const text = `${requestType} ${details}`.toLowerCase();
+          return ROUTING_RULES.find((rule) => rule.keywords.some((kw) => text.includes(kw))) ?? { group: 'reception', label: 'General' };
+        };
+
+        const createEscalationTask = async (request, priority) => {
+          const title = `GUEST REQUEST ${request.id}: ${request.request_type} — ${request.units?.unit_name ?? 'Unknown Room'}`;
+          const { count } = await db
+            .from('resort_ops_tasks')
+            .select('id', { count: 'exact', head: true })
+            .eq('category', 'concierge-ai')
+            .eq('title', title);
+          if ((count ?? 0) > 0) return false;
+          await db.from('resort_ops_tasks').insert({
+            title,
+            description: `Guest: ${request.guest_name}\nDetails: ${request.details}\nRequest ID: ${request.id}`,
+            category: 'concierge-ai',
+            priority,
+            due_date: manilaDate(),
+            status: 'pending',
+          });
+          return true;
+        };
+
         const { data: requests } = await db
           .from('guest_requests')
           .select('id,guest_name,request_type,details,status,created_at,updated_at,routed_group,assigned_to,escalated_at,room_id,units(unit_name)')
           .not('status', 'in', '(completed,cancelled)')
           .order('created_at', { ascending: true });
 
+        let routed = 0;
+        let escalated = 0;
+        let complaints = 0;
+        const now = Date.now();
+
+        for (const request of requests ?? []) {
+          const route = routeRequest(request.request_type ?? '', request.details ?? '');
+          const ageMs = now - new Date(request.created_at).getTime();
+          const isComplaint = route.label === 'Complaint';
+
+          if (request.status === 'pending' && !request.routed_group) {
+            const msg = [
+              `<b>📍 ${route.label} Request — ${request.units?.unit_name ?? 'Unknown Room'}</b>`,
+              `Guest: ${request.guest_name ?? 'Unknown Guest'}`,
+              `Request: ${request.request_type ?? 'General'}${request.details ? ` — ${request.details}` : ''}`,
+              `Age: ${Math.max(0, Math.floor(ageMs / 3_600_000))}h`,
+            ].join('\n');
+
+            const tgRes = await invokeInternalFunction('send-telegram', {
+              body: {
+                group: route.group,
+                message: msg,
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: '👤 Accept', callback_data: `guest_request:accept:${request.id}` },
+                    { text: '✅ Complete', callback_data: `guest_request:complete:${request.id}` },
+                  ]],
+                },
+              },
+            });
+            const sent = tgRes.data?.results?.find((r) => r.group === route.group && r.ok);
+            await db
+              .from('guest_requests')
+              .update({
+                status: 'routed',
+                routed_group: route.group,
+                telegram_chat_id: sent?.chat_id ?? null,
+                telegram_message_id: sent?.message_id ?? null,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', request.id);
+            routed += 1;
+          }
+
+          if (isComplaint) {
+            complaints += 1;
+            const created = await createEscalationTask(request, 'high');
+            if (created) {
+              await invokeInternalFunction('send-telegram', {
+                body: {
+                  group: 'managers',
+                  message: `<b>🔴 GUEST COMPLAINT</b>\n${request.units?.unit_name ?? 'Room'} — ${request.guest_name}\n${request.request_type}: ${request.details}`,
+                },
+              });
+            }
+          }
+
+          if (ageMs > 2 * 3_600_000 && !request.assigned_to && !request.escalated_at) {
+            const created = await createEscalationTask(request, isComplaint ? 'high' : 'medium');
+            await db
+              .from('guest_requests')
+              .update({
+                status: 'escalated',
+                escalated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', request.id);
+            await invokeInternalFunction('send-telegram', {
+              body: {
+                group: isComplaint ? 'managers' : `${route.group},managers`,
+                message: `<b>⏰ OVERDUE GUEST REQUEST</b>\n${request.units?.unit_name ?? 'Room'} — ${request.guest_name}\n${request.request_type}: ${request.details}\nUnaccepted for ${Math.floor(ageMs / 3_600_000)} hours.`,
+              },
+            });
+            if (created) escalated += 1;
+          }
+        }
+
         return {
           status: 200,
           payload: {
             ok: true,
             total: requests?.length ?? 0,
-            routed: 0,
-            escalated: 0,
-            complaints: 0,
+            routed,
+            escalated,
+            complaints,
             unresolved: (requests ?? []).filter((r) => !r.assigned_to).length,
           },
         };
@@ -981,17 +1092,155 @@ Extract the following fields from the receipt or invoice image and return ONLY v
         if (deny) return deny;
 
         const today = manilaDate(0);
-        const { data: nullUnits } = await db
-          .from('resort_ops_bookings')
-          .select('id')
-          .is('unit_id', null)
-          .gte('check_out', today);
+        const in7days = manilaDate(7);
+        const issues = [];
+
+        const [
+          activeRes,
+          arrivalsRes,
+          nullUnitRes,
+          duplicateSirvoyRes,
+          upcomingRes,
+          zeroPaidRes,
+          stuckQueueRes,
+        ] = await Promise.all([
+          db
+            .from('resort_ops_bookings')
+            .select('id, check_in, check_out, room_rate, paid_amount, addons_total, checked_in_at, sirvoy_booking_id, resort_ops_guests(full_name, email, phone), resort_ops_units(name)')
+            .lte('check_in', in7days)
+            .gte('check_out', today)
+            .is('checked_out_at', null),
+          db
+            .from('resort_ops_bookings')
+            .select('id, checked_in_at, room_rate, paid_amount, addons_total, resort_ops_guests(full_name), resort_ops_units(name)')
+            .eq('check_in', today)
+            .is('checked_out_at', null),
+          db
+            .from('resort_ops_bookings')
+            .select('id, check_in, check_out, resort_ops_guests(full_name)')
+            .is('unit_id', null)
+            .gte('check_out', today),
+          db
+            .from('resort_ops_bookings')
+            .select('sirvoy_booking_id')
+            .not('sirvoy_booking_id', 'is', null)
+            .gte('check_out', today),
+          db
+            .from('resort_ops_bookings')
+            .select('id, check_in, resort_ops_guests(id, full_name, email, phone), resort_ops_units(name)')
+            .gte('check_in', today)
+            .lte('check_in', in7days),
+          db
+            .from('resort_ops_bookings')
+            .select('id, check_in, room_rate, platform, resort_ops_guests(full_name), resort_ops_units(name)')
+            .gte('check_in', today)
+            .lte('check_in', in7days)
+            .eq('paid_amount', 0)
+            .gt('room_rate', 0)
+            .not('platform', 'in', '(Direct,direct)'),
+          db
+            .from('webhook_events')
+            .select('id, event_type, source, created_at')
+            .in('status', ['pending', 'retry'])
+            .lt('created_at', new Date(Date.now() - 3_600_000).toISOString()),
+        ]);
+
+        for (const b of (arrivalsRes.data ?? []).filter((x) => !x.checked_in_at)) {
+          issues.push({
+            severity: 'high',
+            title: `No check-in: ${b.resort_ops_guests?.full_name ?? 'Unknown'} — ${b.resort_ops_units?.name ?? '?'}`,
+            description: `Booking check-in date is today (${today}). Guest has not been checked in. Room rate: ₱${b.room_rate ?? 0}.`,
+            telegram_group: 'reception',
+          });
+        }
+
+        for (const b of (activeRes.data ?? []).filter((x) => x.check_out === today)) {
+          const balance = (b.room_rate ?? 0) + (b.addons_total ?? 0) - (b.paid_amount ?? 0);
+          if (balance > 0) {
+            issues.push({
+              severity: 'high',
+              title: `Departing guest owes ₱${Math.round(balance)}: ${b.resort_ops_guests?.full_name ?? 'Unknown'} — ${b.resort_ops_units?.name ?? '?'}`,
+              description: `Guest checks out today (${today}). Outstanding balance ₱${Math.round(balance)}.`,
+              telegram_group: 'reception',
+            });
+          }
+        }
+
+        const nullUnits = nullUnitRes.data ?? [];
+        if (nullUnits.length > 0) {
+          issues.push({
+            severity: 'high',
+            title: `${nullUnits.length} booking(s) have no room assigned`,
+            description: nullUnits.map((b) => `• ${b.resort_ops_guests?.full_name ?? '?'} — check-in ${b.check_in} to ${b.check_out}`).join('\n'),
+            telegram_group: 'managers',
+          });
+        }
+
+        const sirvoyCount = {};
+        for (const r of duplicateSirvoyRes.data ?? []) {
+          if (r.sirvoy_booking_id) sirvoyCount[r.sirvoy_booking_id] = (sirvoyCount[r.sirvoy_booking_id] ?? 0) + 1;
+        }
+        const dupes = Object.entries(sirvoyCount).filter(([, c]) => c > 1);
+        if (dupes.length > 0) {
+          issues.push({
+            severity: 'high',
+            title: `${dupes.length} duplicate Sirvoy booking ID(s) detected`,
+            description: dupes.map(([id, c]) => `Sirvoy ID ${id} appears ${c} times`).join('\n'),
+            telegram_group: 'managers',
+          });
+        }
+
+        for (const b of (upcomingRes.data ?? []).filter((x) => !x.resort_ops_guests?.email && !x.resort_ops_guests?.phone)) {
+          issues.push({
+            severity: 'medium',
+            title: `No contact info: ${b.resort_ops_guests?.full_name ?? '?'} arriving ${b.check_in}`,
+            description: `Booking for ${b.resort_ops_units?.name ?? '?'} on ${b.check_in}. Guest has no email or phone on record.`,
+          });
+        }
+
+        for (const b of zeroPaidRes.data ?? []) {
+          issues.push({
+            severity: 'medium',
+            title: `No deposit: ${b.resort_ops_guests?.full_name ?? '?'} — ${b.resort_ops_units?.name ?? '?'} (${b.platform}, arriving ${b.check_in})`,
+            description: `Room rate ₱${b.room_rate}. Zero payment recorded.`,
+          });
+        }
+
+        const stuckEvents = stuckQueueRes.data ?? [];
+        if (stuckEvents.length > 0) {
+          issues.push({
+            severity: 'medium',
+            title: `${stuckEvents.length} booking sync event(s) stuck in queue`,
+            description: 'Webhook events pending >1 hour.',
+            telegram_group: 'managers',
+          });
+        }
+
+        for (const issue of issues) {
+          const { count } = await db
+            .from('resort_ops_tasks')
+            .select('id', { count: 'exact', head: true })
+            .eq('category', 'reservations-ai')
+            .eq('title', issue.title)
+            .eq('due_date', today);
+          if ((count ?? 0) === 0) {
+            await db.from('resort_ops_tasks').insert({
+              title: issue.title,
+              description: issue.description,
+              category: 'reservations-ai',
+              priority: issue.severity,
+              due_date: today,
+              status: 'pending',
+            });
+          }
+        }
 
         return {
           status: 200,
           payload: {
             ok: true,
-            issues_found: (nullUnits || []).length,
+            issues_found: issues.length,
+            issues,
           },
         };
       }
@@ -1569,21 +1818,184 @@ Extract the following fields from the receipt or invoice image and return ONLY v
       case 'guest-whatsapp': {
         const deny = requireInternalGuard();
         if (deny) return deny;
+
         const bridgeUrl = process.env.WHATSAPP_BRIDGE_URL;
         const bridgeSecret = process.env.WHATSAPP_BRIDGE_SECRET;
+        const qrUrl = process.env.GCASH_QR_URL;
         if (!bridgeUrl || !bridgeSecret) {
           return { status: 503, payload: { ok: false, error: 'whatsapp_bridge_not_configured' } };
         }
-        return { status: 200, payload: { ok: true, provider_message_id: null, case_id: body?.case_id } };
+
+        const { to, guest_name, balance, case_id } = body || {};
+        if (!to) {
+          return { status: 400, payload: { ok: false, error: 'to (guest phone) required' } };
+        }
+
+        const resortName = process.env.RESORT_NAME || 'BAIA';
+        const name = guest_name || 'there';
+        const formattedPeso = `₱${Number(balance ?? 0).toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
+        const message = [
+          `Hi ${name}, this is ${resortName}. `,
+          `You have an outstanding balance of ${formattedPeso}.`,
+          qrUrl
+            ? " Please pay via the GCash QR below — reply here once you've sent it and we'll confirm."
+            : ' Please settle at your convenience — reply here if you have any questions.',
+        ].join('');
+
+        const bridgeRes = await fetch(bridgeUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-bridge-secret': bridgeSecret },
+          body: JSON.stringify({ to, message, mediaUrl: qrUrl || undefined }),
+        });
+        const bridgeData = await bridgeRes.json().catch(() => ({}));
+        if (!bridgeRes.ok || bridgeData?.ok === false) {
+          return {
+            status: 502,
+            payload: { ok: false, error: bridgeData?.error || `bridge returned ${bridgeRes.status}` },
+          };
+        }
+        return { status: 200, payload: { ok: true, provider_message_id: bridgeData?.id ?? null, case_id } };
       }
 
-      case 'telegram-webhook':
-        return { status: 200, payload: { ok: true } };
+      case 'telegram-webhook': {
+        const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+        if (expectedSecret && headers['x-telegram-bot-api-secret-token'] !== expectedSecret) {
+          return { status: 403, payload: { ok: false, error: 'Forbidden' } };
+        }
+
+        const callback = body?.callback_query;
+        if (!callback?.data) {
+          return { status: 200, payload: { ok: true } };
+        }
+
+        const match = String(callback.data).match(/^guest_request:(accept|complete):([0-9a-fA-F-]{1,64})$/i);
+        if (!match) {
+          return { status: 200, payload: { ok: true, ignored: true } };
+        }
+
+        const [, actionRaw, requestId] = match;
+        const action = actionRaw.toLowerCase();
+        const from = callback.from || {};
+        const actor =
+          [from.first_name, from.last_name].filter(Boolean).join(' ').trim() ||
+          (from.username ? `@${from.username}` : `Telegram ${from.id ?? 'staff'}`);
+
+        const { data: request, error: readError } = await db
+          .from('guest_requests')
+          .select('id,guest_name,request_type,details,status,assigned_to,assigned_at,routed_group')
+          .eq('id', requestId)
+          .single();
+        if (readError || !request) {
+          return { status: 404, payload: { ok: false, error: 'Guest request not found' } };
+        }
+
+        const now = new Date().toISOString();
+        let nextStatus = request.status;
+        let callbackText = 'No change';
+
+        if (action === 'accept') {
+          if (['completed', 'cancelled'].includes(request.status)) {
+            callbackText = 'Request already closed';
+          } else if (request.assigned_to && request.assigned_to !== actor) {
+            callbackText = `Already accepted by ${request.assigned_to}`;
+          } else {
+            await db
+              .from('guest_requests')
+              .update({
+                status: 'in_progress',
+                assigned_to: actor,
+                assigned_at: request.assigned_at ?? now,
+                updated_at: now,
+              })
+              .eq('id', requestId);
+            nextStatus = 'in_progress';
+            callbackText = `Accepted by ${actor}`;
+          }
+        } else if (action === 'complete') {
+          if (request.status === 'completed') {
+            callbackText = 'Request already completed';
+          } else {
+            await db
+              .from('guest_requests')
+              .update({
+                status: 'completed',
+                assigned_to: request.assigned_to || actor,
+                assigned_at: request.assigned_at || now,
+                completed_by: actor,
+                completed_at: now,
+                updated_at: now,
+              })
+              .eq('id', requestId);
+            nextStatus = 'completed';
+            callbackText = `Completed by ${actor}`;
+          }
+        }
+
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        if (token && callback.message?.chat?.id && callback.message?.message_id) {
+          const originalText = callback.message?.text || `${request.request_type} — ${request.guest_name}`;
+          const cleanText = originalText.replace(/\n\n(?:✅|👤|⏱).*$/s, '');
+          await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: callback.message.chat.id,
+              message_id: callback.message.message_id,
+              text: `${cleanText}\n\n${nextStatus === 'completed' ? '✅' : '👤'} ${callbackText}`,
+              reply_markup:
+                nextStatus === 'completed'
+                  ? { inline_keyboard: [] }
+                  : {
+                      inline_keyboard: [[{ text: '✅ Complete', callback_data: `guest_request:complete:${requestId}` }]],
+                    },
+            }),
+          }).catch(() => {});
+          await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: callback.id, text: callbackText }),
+          }).catch(() => {});
+        }
+
+        await db.from('audit_log').insert({
+          employee_name: actor,
+          action: 'updated',
+          table_name: 'guest_requests',
+          record_id: requestId,
+          details: `Telegram ${action}: ${callbackText}`,
+        });
+
+        return { status: 200, payload: { ok: true, request_id: requestId, status: nextStatus, callback_text: callbackText } };
+      }
 
       case 'configure-telegram-webhook': {
         const deny = requireInternalGuard();
         if (deny) return deny;
-        return { status: 200, payload: { ok: true } };
+        const token = process.env.TELEGRAM_BOT_TOKEN;
+        const appUrl = (process.env.APP_URL || process.env.VITE_KAPWA_API_URL || '').replace(/\/$/, '');
+        const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+        if (!token || !appUrl || !webhookSecret) {
+          return {
+            status: 400,
+            payload: { ok: false, error: 'TELEGRAM_BOT_TOKEN, APP_URL, and TELEGRAM_WEBHOOK_SECRET are required' },
+          };
+        }
+        const webhookUrl = `${appUrl}/api/functions/telegram-webhook`;
+        const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: webhookUrl,
+            secret_token: webhookSecret,
+            allowed_updates: ['callback_query'],
+            drop_pending_updates: false,
+          }),
+        });
+        const result = await response.json();
+        if (!result.ok) {
+          return { status: 502, payload: { ok: false, error: result.description || 'Telegram setWebhook failed' } };
+        }
+        return { status: 200, payload: { ok: true, webhook_url: webhookUrl, description: result.description } };
       }
 
       default:

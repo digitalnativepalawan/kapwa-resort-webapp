@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -60,7 +60,7 @@ const EditTourModal = ({ open, onOpenChange, tour, unitName, bookingId, sourceTa
         payload.provider = form.provider.trim();
       }
 
-      const { error } = await (supabase.from(sourceTable as any) as any).update(payload).eq('id', tour.id);
+      const { error } = await (kapwaClient.from(sourceTable as any) as any).update(payload).eq('id', tour.id);
       if (error) throw error;
 
       // Invalidate ALL relevant query keys so changes reflect everywhere

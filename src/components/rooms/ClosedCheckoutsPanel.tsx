@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { logAudit } from '@/lib/auditLog';
 import { format } from 'date-fns';
 
-const from = (table: string) => supabase.from(table as any) as any;
+const from = (table: string) => kapwaClient.from(table as any) as any;
 
 interface ClosedCheckoutsPanelProps {
   isAdmin: boolean;
@@ -52,7 +52,7 @@ const ClosedCheckoutsPanel = ({ isAdmin }: ClosedCheckoutsPanelProps) => {
         // Find the units table record matching this resort_ops_unit
         const unitName = booking.resort_ops_units?.name;
         if (unitName) {
-          await supabase.from('units').update({ status: 'occupied' } as any).eq('unit_name', unitName);
+          await kapwaClient.from('units').update({ status: 'occupied' } as any).eq('unit_name', unitName);
         }
       }
 

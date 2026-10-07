@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -39,7 +39,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: ingredients = [] } = useQuery({
     queryKey: ['ingredients'],
     queryFn: async () => {
-      const { data } = await supabase.from('ingredients').select('*').order('name');
+      const { data } = await kapwaClient.from('ingredients').select('*').order('name');
       return data || [];
     },
   });
@@ -47,7 +47,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: recipeLinks = [] } = useQuery({
     queryKey: ['recipe_ingredients_with_menu'],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('recipe_ingredients')
         .select('ingredient_id, menu_item_id, quantity, menu_items(name)');
       return data || [];
@@ -59,7 +59,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     queryKey: ['burn-rate-logs'],
     queryFn: async () => {
       const since = subDays(new Date(), 14).toISOString();
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('inventory_logs')
         .select('ingredient_id, change_qty, created_at')
         .eq('reason', 'order_deduction')
@@ -73,7 +73,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     queryKey: ['consumption-logs', logDays],
     queryFn: async () => {
       const since = subDays(new Date(), logDays).toISOString();
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('inventory_logs')
         .select('*, ingredients(name, unit, department)')
         .eq('reason', 'order_deduction')
@@ -175,18 +175,18 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     if (!payload.name) return;
 
     if (editIng === 'new') {
-      await supabase.from('ingredients').insert(payload);
+      await kapwaClient.from('ingredients').insert(payload);
     } else {
       const oldStock = editIng.current_stock;
       if (payload.current_stock !== oldStock) {
-        await supabase.from('inventory_logs').insert({
+        await kapwaClient.from('inventory_logs').insert({
           ingredient_id: editIng.id,
           change_qty: payload.current_stock - oldStock,
           reason: 'manual_adjustment',
           department: payload.department,
         });
       }
-      await supabase.from('ingredients').update(payload).eq('id', editIng.id);
+      await kapwaClient.from('ingredients').update(payload).eq('id', editIng.id);
     }
     setEditIng(null);
     qc.invalidateQueries({ queryKey: ['ingredients'] });
@@ -194,7 +194,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const deleteIng = async (id: string) => {
-    await supabase.from('ingredients').delete().eq('id', id);
+    await kapwaClient.from('ingredients').delete().eq('id', id);
     setEditIng(null);
     qc.invalidateQueries({ queryKey: ['ingredients'] });
     toast.success('Ingredient deleted');
@@ -282,7 +282,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     }
 
     for (const u of updates) {
-      await supabase.from('ingredients').update({ low_stock_threshold: u.threshold }).eq('id', u.id);
+      await kapwaClient.from('ingredients').update({ low_stock_threshold: u.threshold }).eq('id', u.id);
     }
 
     qc.invalidateQueries({ queryKey: ['ingredients'] });
@@ -327,12 +327,12 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     }
 
     // Deduct from source
-    await supabase.from('ingredients').update({
+    await kapwaClient.from('ingredients').update({
       current_stock: (sourceIng as any).current_stock - qty,
     }).eq('id', sourceIng.id);
 
     // Find or create target ingredient
-    const { data: existing } = await supabase
+    const { data: existing } = await kapwaClient
       .from('ingredients')
       .select('*')
       .eq('name', (sourceIng as any).name)
@@ -340,11 +340,11 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       .maybeSingle();
 
     if (existing) {
-      await supabase.from('ingredients').update({
+      await kapwaClient.from('ingredients').update({
         current_stock: existing.current_stock + qty,
       }).eq('id', existing.id);
     } else {
-      await supabase.from('ingredients').insert({
+      await kapwaClient.from('ingredients').insert({
         name: (sourceIng as any).name,
         unit: (sourceIng as any).unit,
         cost_per_unit: (sourceIng as any).cost_per_unit,
@@ -356,7 +356,7 @@ const InventoryDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
 
     // Log both
     const reason = transfer.reason ? `transfer: ${transfer.reason}` : 'transfer';
-    await supabase.from('inventory_logs').insert([
+    await kapwaClient.from('inventory_logs').insert([
       { ingredient_id: sourceIng.id, change_qty: -qty, reason, department: transfer.fromDept },
       { ingredient_id: existing?.id || sourceIng.id, change_qty: qty, reason, department: transfer.toDept },
     ]);

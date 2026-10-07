@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 export function useAppOptions() {
   return useQuery({
     queryKey: ['app-options'],
     queryFn: async () => {
-      const { data } = await (supabase.from('app_options' as any) as any)
+      const { data } = await (kapwaClient.from('app_options' as any) as any)
         .select('*')
         .order('sort_order');
       return (data || []) as { id: string; category: string; label: string; sort_order: number }[];

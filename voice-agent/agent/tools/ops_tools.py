@@ -5,7 +5,7 @@ housekeeping_orders) -- treat as real actions, not stubs. They're scoped to
 """
 from __future__ import annotations
 from datetime import datetime, timedelta
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 from agent.tools.base import ToolResult
 
 

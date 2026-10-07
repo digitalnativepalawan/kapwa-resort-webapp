@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { logAudit } from '@/lib/auditLog';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -82,7 +82,7 @@ const AdjustmentModal = ({ open, onOpenChange, unitId, unitName, guestName, book
 
     setSubmitting(true);
     try {
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unitId,
         unit_name: unitName,
         guest_name: guestName,
@@ -117,7 +117,7 @@ const AdjustmentModal = ({ open, onOpenChange, unitId, unitName, guestName, book
 
     setSubmitting(true);
     try {
-      await (supabase.from('room_transactions' as any) as any).insert({
+      await (kapwaClient.from('room_transactions' as any) as any).insert({
         unit_id: unitId,
         unit_name: unitName,
         guest_name: guestName,

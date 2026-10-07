@@ -7,7 +7,7 @@ Documentation only - edits NO code. Apply SQL in docs/security/ on STAGING first
 Status: [ ] not done  [~] partial/staged  [x] done
 
 ## GATE 0 - Before you touch anything
-- [ ] Freeze prod Supabase; snapshot/backup.
+- [ ] Freeze prod Neon PostgreSQL; snapshot/backup.
 - [ ] Create STAGING project mirroring prod schema.
 - [ ] Validate all SQL on staging before any prod apply.
 
@@ -24,7 +24,7 @@ Source: docs/security/rls-phase2-crown-jewels.sql (parked in docs/, not auto-app
 
 ## GATE 2 - Staff auth & JWT (flagged "not verified E2E")
 - [ ] employee-auth mints staff JWT on PIN login (returns token).
-- [ ] JWT verified E2E: browser -> Supabase RPC -> RLS claim.
+- [ ] JWT verified E2E: browser -> Neon PostgreSQL RPC -> RLS claim.
 - [ ] Permission claim matches src/lib/permissions.ts::hasAccess.
 - [ ] PIN login rate-limited with lockout.
 - [ ] Service-role key only in Edge Functions, never client bundle.
@@ -54,7 +54,7 @@ Source: docs/security/rls-phase2-crown-jewels.sql (parked in docs/, not auto-app
 
 ## GATE 7 - Sealed deploy
 - [ ] .env / server/data/ never committed (.gitignore confirmed).
-- [ ] Each property = own Supabase project (pilot scope).
+- [ ] Each property = own Neon PostgreSQL project (pilot scope).
 - [ ] README URL fixed (dead new-KAPWA OS-from-FABLE-5 link).
 
 ## Sign-off

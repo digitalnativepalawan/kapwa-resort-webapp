@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -36,7 +36,7 @@ const EditRequestModal = ({ open, onOpenChange, request }: EditRequestModalProps
     if (!form.request_type.trim()) { toast.error('Request type is required'); return; }
     setSaving(true);
     try {
-      const { error } = await supabase.from('guest_requests').update({
+      const { error } = await kapwaClient.from('guest_requests').update({
         request_type: form.request_type.trim(),
         guest_name: form.guest_name.trim(),
         details: form.details.trim(),

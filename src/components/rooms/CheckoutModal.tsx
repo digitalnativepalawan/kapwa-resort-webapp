@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { logAudit } from '@/lib/auditLog';
 import { openWhatsApp } from '@/lib/messenger';
 import { toast } from 'sonner';
@@ -40,7 +40,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     queryKey: ['checkout-all-room-orders', unitId],
     enabled: open && !!unitId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('id, total, guest_name, status, payment_type, created_at, items')
         .eq('room_id', unitId)
@@ -57,7 +57,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     queryKey: ['checkout-unserved-orders', unitId],
     enabled: open && !!unitId,
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('id, status')
         .eq('room_id', unitId)
@@ -71,7 +71,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     queryKey: ['checkout-incomplete-tours', bookingId],
     enabled: open && !!bookingId,
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_tours') as any)
+      const { data } = await (kapwaClient.from('guest_tours') as any)
         .select('id, tour_name, status, price')
         .eq('booking_id', bookingId)
         .in('status', ['booked', 'confirmed']);
@@ -84,7 +84,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     queryKey: ['checkout-incomplete-requests', bookingId],
     enabled: open && !!bookingId,
     queryFn: async () => {
-      const { data } = await (supabase.from('guest_requests') as any)
+      const { data } = await (kapwaClient.from('guest_requests') as any)
         .select('id, request_type, status, price')
         .eq('booking_id', bookingId)
         .in('status', ['pending', 'confirmed']);
@@ -98,7 +98,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     enabled: open && !!unitName,
     queryFn: async () => {
       // Check for existing active HK order
-      const { data: existing } = await (supabase.from('housekeeping_orders') as any)
+      const { data: existing } = await (kapwaClient.from('housekeeping_orders') as any)
         .select('id, status, damage_notes, inspection_by_name')
         .eq('unit_name', unitName)
         .neq('status', 'completed')
@@ -109,7 +109,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       if (existing) return existing as any;
 
       // Auto-create a pre_inspection order when checkout modal opens
-      const { data: newOrder } = await (supabase.from('housekeeping_orders') as any)
+      const { data: newOrder } = await (kapwaClient.from('housekeeping_orders') as any)
         .insert({
           unit_name: unitName,
           room_type_id: roomTypeId || null,
@@ -126,7 +126,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     queryKey: ['checkout-bill-agreement', bookingId],
     enabled: open && !!bookingId,
     queryFn: async () => {
-      const { data } = await supabase.from('resort_ops_bookings').select('bill_agreed_at').eq('id', bookingId!).maybeSingle();
+      const { data } = await kapwaClient.from('resort_ops_bookings').select('bill_agreed_at').eq('id', bookingId!).maybeSingle();
       return data as any;
     },
   });
@@ -136,11 +136,11 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
   const { data: hkEmployees = [] } = useQuery({
     queryKey: ['housekeeping-employees'],
     queryFn: async () => {
-      const { data: perms } = await supabase.from('employee_permissions')
+      const { data: perms } = await kapwaClient.from('employee_permissions')
         .select('employee_id')
         .like('permission', 'housekeeping%');
       const hkIds = new Set((perms || []).map((p: any) => p.employee_id));
-      const { data: emps } = await supabase.from('employees')
+      const { data: emps } = await kapwaClient.from('employees')
         .select('id, name, display_name, whatsapp_number, preferred_contact_method')
         .eq('active', true)
         .order('name');
@@ -179,7 +179,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
     try {
       const finalAmount = parseFloat(paymentAmount) || 0;
       if (finalAmount > 0 && paymentMethod) {
-        await (supabase.from('room_transactions' as any) as any).insert({
+        await (kapwaClient.from('room_transactions' as any) as any).insert({
           unit_id: unitId,
           unit_name: unitName,
           guest_name: guestName,
@@ -198,20 +198,20 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       // Batch-settle ALL unpaid room orders
       if (unpaidOrders.length > 0) {
         const orderIds = unpaidOrders.map((o: any) => o.id);
-        await supabase.from('orders')
+        await kapwaClient.from('orders')
           .update({ status: 'Paid', closed_at: new Date().toISOString() })
           .in('id', orderIds);
       }
 
       if (bookingId) {
         const today = new Date().toISOString().split('T')[0];
-        await supabase.from('resort_ops_bookings').update({
+        await kapwaClient.from('resort_ops_bookings').update({
           check_out: today,
           checked_out_at: new Date().toISOString(),
         } as any).eq('id', bookingId);
       }
 
-      await supabase.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
+      await kapwaClient.from('units').update({ status: 'to_clean' } as any).eq('id', unitId);
 
       // Telegram notification
       import('@/lib/telegram').then(({ notifyTelegram }) => {
@@ -222,7 +222,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
       const hkEmployee = hkEmployees.find((e: any) => e.id === selectedHousekeeper);
 
       if (hkOrder?.id) {
-        await (supabase.from('housekeeping_orders' as any) as any).update({
+        await (kapwaClient.from('housekeeping_orders' as any) as any).update({
           status: 'cleaning',
           assigned_to: selectedHousekeeper || hkOrder.assigned_to || null,
           accepted_by: selectedHousekeeper || hkOrder.accepted_by || null,
@@ -231,7 +231,7 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
         }).eq('id', hkOrder.id);
       } else {
         // Fallback: create new cleaning order
-        await (supabase.from('housekeeping_orders' as any) as any).insert({
+        await (kapwaClient.from('housekeeping_orders' as any) as any).insert({
           unit_name: unitName,
           room_type_id: roomTypeId || null,
           status: 'cleaning',
@@ -251,11 +251,11 @@ const CheckoutModal = ({ open, onOpenChange, unitId, unitName, guestName, bookin
 
       // Cancel any pending guest requests & tours for this booking
       if (bookingId) {
-        await (supabase.from('guest_requests' as any) as any)
+        await (kapwaClient.from('guest_requests' as any) as any)
           .update({ status: 'cancelled' })
           .eq('booking_id', bookingId)
           .eq('status', 'pending');
-        await (supabase.from('guest_tours' as any) as any)
+        await (kapwaClient.from('guest_tours' as any) as any)
           .update({ status: 'cancelled' })
           .eq('booking_id', bookingId)
           .eq('status', 'pending');

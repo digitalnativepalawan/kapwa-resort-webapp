@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 /**
  * Log an audit entry for any staff modification made through the Manager dashboard.
@@ -13,7 +13,7 @@ export const logAudit = async (
   const employeeId = localStorage.getItem('emp_id') || null;
   const employeeName = localStorage.getItem('emp_name') || 'Unknown';
 
-  await (supabase.from('audit_log' as any) as any).insert({
+  await (kapwaClient.from('audit_log' as any) as any).insert({
     employee_id: employeeId,
     employee_name: employeeName,
     action,

@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Flame, GlassWater, BellRing, Banknote, ArrowLeft, LayoutGrid, UtensilsCrossed, ConciergeBell, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { useMemo } from 'react';
 import { getStaffSession } from '@/lib/session';
 import { getHomeRoute } from '@/lib/getHomeRoute';
@@ -97,7 +97,7 @@ const ServiceModePage = () => {
     queryFn: async () => {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('id, status, kitchen_status, bar_status, payment_type, items')
         .in('status', ['New', 'Preparing', 'Ready', 'Served'])

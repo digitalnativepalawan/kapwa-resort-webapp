@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -122,7 +122,7 @@ const AdminPage = () => {
 
   // ── Realtime ───────────────────────────────────────────────────
   useEffect(() => {
-    const channel = supabase
+    const channel = kapwaClient
       .channel('admin-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
         qc.invalidateQueries({ queryKey: ['orders-admin'] });
@@ -133,7 +133,7 @@ const AdminPage = () => {
         qc.invalidateQueries({ queryKey: ['tabs-admin'] });
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { kapwaClient.removeChannel(channel); };
   }, [qc]);
 
   // ── Data queries ───────────────────────────────────────────────
@@ -141,7 +141,7 @@ const AdminPage = () => {
     queryKey: ['settings'],
     enabled: isAdmin || hasAccess(perms, 'setup'),
     queryFn: async () => {
-      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const { data } = await kapwaClient.from('settings').select('*').limit(1).maybeSingle();
       return data;
     },
   });
@@ -150,7 +150,7 @@ const AdminPage = () => {
     queryKey: ['units-admin'],
     enabled: isAdmin || hasAccess(perms, 'setup'),
     queryFn: async () => {
-      const { data } = await supabase.from('units').select('*').order('unit_name');
+      const { data } = await kapwaClient.from('units').select('*').order('unit_name');
       return data || [];
     },
   });
@@ -159,7 +159,7 @@ const AdminPage = () => {
     queryKey: ['tables-admin'],
     enabled: isAdmin || hasAccess(perms, 'setup'),
     queryFn: async () => {
-      const { data } = await supabase.from('resort_tables').select('*').order('table_name');
+      const { data } = await kapwaClient.from('resort_tables').select('*').order('table_name');
       return data || [];
     },
   });
@@ -168,7 +168,7 @@ const AdminPage = () => {
     queryKey: ['order-types-admin'],
     enabled: isAdmin || hasAccess(perms, 'setup'),
     queryFn: async () => {
-      const { data } = await supabase.from('order_types').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('order_types').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -177,7 +177,7 @@ const AdminPage = () => {
     queryKey: ['menu-categories-admin'],
     enabled: isAdmin || hasAccess(perms, 'menu') || hasAccess(perms, 'setup'),
     queryFn: async () => {
-      const { data } = await supabase.from('menu_categories').select('*').order('sort_order');
+      const { data } = await kapwaClient.from('menu_categories').select('*').order('sort_order');
       return data || [];
     },
   });
@@ -186,7 +186,7 @@ const AdminPage = () => {
     queryKey: ['menu-admin'],
     enabled: isAdmin || hasAccess(perms, 'menu') || hasAccess(perms, 'orders'),
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('*').order('category').order('sort_order');
+      const { data } = await kapwaClient.from('menu_items').select('*').order('category').order('sort_order');
       return data || [];
     },
   });
@@ -195,7 +195,7 @@ const AdminPage = () => {
     queryKey: ['orders-admin'],
     enabled: isAdmin || hasAccess(perms, 'orders'),
     queryFn: async () => {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
+      const { data } = await kapwaClient.from('orders').select('*').order('created_at', { ascending: false }).limit(200);
       return data || [];
     },
     refetchInterval: 5000,
@@ -205,7 +205,7 @@ const AdminPage = () => {
     queryKey: ['tabs-admin'],
     enabled: isAdmin || hasAccess(perms, 'orders'),
     queryFn: async () => {
-      const { data } = await supabase.from('tabs').select('*').order('created_at', { ascending: false }).limit(100);
+      const { data } = await kapwaClient.from('tabs').select('*').order('created_at', { ascending: false }).limit(100);
       return data || [];
     },
   });
@@ -219,11 +219,11 @@ const AdminPage = () => {
   const sendMorningBrief = async () => {
     setMorningBriefLoading(true);
     try {
-      // Routed through the Supabase client so it always hits the project this
+      // Routed through the KAPWA client so it always hits the project this
       // build is configured for, and carries the caller's staff JWT. It used to
       // POST a hardcoded URL for the retired project with a hardcoded secret in
       // the bundle, which meant it wrote to a different database entirely.
-      const { data, error } = await supabase.functions.invoke('ops-coordinator', {
+      const { data, error } = await kapwaClient.functions.invoke('ops-coordinator', {
         body: { type: 'morning' },
       });
       if (error) throw error;
@@ -251,9 +251,9 @@ const AdminPage = () => {
       breakfast_end_time: brkEnd,
     };
     if (settings?.id) {
-      await supabase.from('settings').update(payload).eq('id', settings.id);
+      await kapwaClient.from('settings').update(payload).eq('id', settings.id);
     } else {
-      await supabase.from('settings').insert(payload);
+      await kapwaClient.from('settings').insert(payload);
     }
     qc.invalidateQueries({ queryKey: ['settings'] });
     toast.success('Settings saved');
@@ -263,7 +263,7 @@ const AdminPage = () => {
   const [newUnit, setNewUnit] = useState('');
   const addUnit = async () => {
     if (!newUnit.trim()) return;
-    await supabase.from('units').insert({ unit_name: newUnit.trim() });
+    await kapwaClient.from('units').insert({ unit_name: newUnit.trim() });
     setNewUnit('');
     qc.invalidateQueries({ queryKey: ['units-admin'] });
   };
@@ -272,7 +272,7 @@ const AdminPage = () => {
   const [newTable, setNewTable] = useState('');
   const addTable = async () => {
     if (!newTable.trim()) return;
-    await supabase.from('resort_tables').insert({ table_name: newTable.trim() });
+    await kapwaClient.from('resort_tables').insert({ table_name: newTable.trim() });
     setNewTable('');
     qc.invalidateQueries({ queryKey: ['tables-admin'] });
   };
@@ -282,7 +282,7 @@ const AdminPage = () => {
   const addOrderType = async () => {
     if (!newOrderType.trim()) return;
     const maxSort = orderTypes.reduce((m, ot) => Math.max(m, ot.sort_order), 0);
-    await supabase.from('order_types').insert({
+    await kapwaClient.from('order_types').insert({
       label: newOrderType.trim(),
       type_key: newOrderType.trim().replace(/\s+/g, ''),
       input_mode: 'text',
@@ -298,7 +298,7 @@ const AdminPage = () => {
   const addCategory = async () => {
     if (!newCategory.trim()) return;
     const maxSort = menuCategories.reduce((m: number, c: any) => Math.max(m, c.sort_order), 0);
-    await supabase.from('menu_categories').insert({ name: newCategory.trim(), sort_order: maxSort + 1 });
+    await kapwaClient.from('menu_categories').insert({ name: newCategory.trim(), sort_order: maxSort + 1 });
     setNewCategory('');
     qc.invalidateQueries({ queryKey: ['menu-categories-admin'] });
   };
@@ -337,9 +337,9 @@ const AdminPage = () => {
       department: itemForm.department,
     };
     if (editItem === 'new') {
-      await supabase.from('menu_items').insert(payload);
+      await kapwaClient.from('menu_items').insert(payload);
     } else {
-      await supabase.from('menu_items').update(payload).eq('id', editItem.id);
+      await kapwaClient.from('menu_items').update(payload).eq('id', editItem.id);
     }
     setEditItem(null);
     qc.invalidateQueries({ queryKey: ['menu-admin'] });
@@ -356,8 +356,8 @@ const AdminPage = () => {
       setTimeout(() => setConfirmingDelete(false), 3000);
       return;
     }
-    await supabase.from('recipe_ingredients').delete().eq('menu_item_id', editItem.id);
-    await supabase.from('menu_items').delete().eq('id', editItem.id);
+    await kapwaClient.from('recipe_ingredients').delete().eq('menu_item_id', editItem.id);
+    await kapwaClient.from('menu_items').delete().eq('id', editItem.id);
     setEditItem(null);
     setConfirmingDelete(false);
     qc.invalidateQueries({ queryKey: ['menu-admin'] });
@@ -375,11 +375,11 @@ const AdminPage = () => {
   const deleteAllOrders = async () => {
     try {
       // Delete in FK order: room_transactions → inventory_logs → orders → tabs
-      await supabase.from('room_transactions' as any).delete().gte('created_at', '1970-01-01');
-      await supabase.from('inventory_logs').delete().gte('created_at', '1970-01-01');
-      const { error: ordErr } = await supabase.from('orders').delete().gte('created_at', '1970-01-01');
+      await kapwaClient.from('room_transactions' as any).delete().gte('created_at', '1970-01-01');
+      await kapwaClient.from('inventory_logs').delete().gte('created_at', '1970-01-01');
+      const { error: ordErr } = await kapwaClient.from('orders').delete().gte('created_at', '1970-01-01');
       if (ordErr) { toast.error(`Orders: ${ordErr.message}`); return; }
-      const { error: tabErr } = await supabase.from('tabs').delete().gte('created_at', '1970-01-01');
+      const { error: tabErr } = await kapwaClient.from('tabs').delete().gte('created_at', '1970-01-01');
       if (tabErr) { toast.error(`Tabs: ${tabErr.message}`); return; }
       qc.invalidateQueries({ queryKey: ['orders-admin'] });
       qc.invalidateQueries({ queryKey: ['tabs-admin'] });
@@ -432,7 +432,7 @@ const AdminPage = () => {
     if (nextStatus === 'Closed') {
       updateData.closed_at = new Date().toISOString();
     }
-    await supabase.from('orders').update(updateData).eq('id', orderId);
+    await kapwaClient.from('orders').update(updateData).eq('id', orderId);
     if (nextStatus === 'Preparing') {
       const order = orders.find(o => o.id === orderId);
       if (order) {
@@ -450,9 +450,9 @@ const AdminPage = () => {
 
   const deleteOrder = async (orderId: string) => {
     // Delete dependent records first to avoid FK constraint errors
-    await supabase.from('room_transactions').delete().eq('order_id', orderId);
-    await supabase.from('inventory_logs').delete().eq('order_id', orderId);
-    const { error } = await supabase.from('orders').delete().eq('id', orderId);
+    await kapwaClient.from('room_transactions').delete().eq('order_id', orderId);
+    await kapwaClient.from('inventory_logs').delete().eq('order_id', orderId);
+    const { error } = await kapwaClient.from('orders').delete().eq('id', orderId);
     if (error) {
       toast.error(`Delete failed: ${error.message}`);
       return;
@@ -480,7 +480,7 @@ const AdminPage = () => {
     const newItems = Object.entries(addCart).map(([, c]) => ({ name: c.name, price: c.price, qty: c.qty }));
     const newTotal = newItems.reduce((s, i) => s + i.price * i.qty, 0);
     const newServiceCharge = Math.round(newTotal * 0.1);
-    await supabase.from('orders').insert({
+    await kapwaClient.from('orders').insert({
       items: newItems,
       total: newTotal,
       service_charge: newServiceCharge,
@@ -829,9 +829,9 @@ const AdminPage = () => {
                   <div className="space-y-0">
                     {units.map(u => (
                       <EditableRow key={u.id} id={u.id} name={u.unit_name} active={u.active}
-                        onRename={async (id, newName) => { await supabase.from('units').update({ unit_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit renamed'); }}
-                        onDelete={async (id) => { await supabase.from('units').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit deleted'); }}
-                        onToggle={async (id, checked) => { await supabase.from('units').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); }}
+                        onRename={async (id, newName) => { await kapwaClient.from('units').update({ unit_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit renamed'); }}
+                        onDelete={async (id) => { await kapwaClient.from('units').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); toast.success('Unit deleted'); }}
+                        onToggle={async (id, checked) => { await kapwaClient.from('units').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['units-admin'] }); }}
                       />
                     ))}
                     <div className="flex gap-2 mt-3">
@@ -847,9 +847,9 @@ const AdminPage = () => {
                   <div className="space-y-0">
                     {tables.map(t => (
                       <EditableRow key={t.id} id={t.id} name={t.table_name} active={t.active}
-                        onRename={async (id, newName) => { await supabase.from('resort_tables').update({ table_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table renamed'); }}
-                        onDelete={async (id) => { await supabase.from('resort_tables').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table deleted'); }}
-                        onToggle={async (id, checked) => { await supabase.from('resort_tables').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); }}
+                        onRename={async (id, newName) => { await kapwaClient.from('resort_tables').update({ table_name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table renamed'); }}
+                        onDelete={async (id) => { await kapwaClient.from('resort_tables').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); toast.success('Table deleted'); }}
+                        onToggle={async (id, checked) => { await kapwaClient.from('resort_tables').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['tables-admin'] }); }}
                       />
                     ))}
                     <div className="flex gap-2 mt-3">
@@ -866,15 +866,15 @@ const AdminPage = () => {
                     {orderTypes.map(ot => (
                       <div key={ot.id} className="space-y-2 border border-border rounded-lg p-3">
                         <EditableRow id={ot.id} name={ot.label} active={ot.active}
-                          onRename={async (id, newName) => { await supabase.from('order_types').update({ label: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type renamed'); }}
-                          onDelete={async (id) => { await supabase.from('order_types').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type deleted'); }}
-                          onToggle={async (id, checked) => { await supabase.from('order_types').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); }}
+                          onRename={async (id, newName) => { await kapwaClient.from('order_types').update({ label: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type renamed'); }}
+                          onDelete={async (id) => { await kapwaClient.from('order_types').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); toast.success('Order type deleted'); }}
+                          onToggle={async (id, checked) => { await kapwaClient.from('order_types').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['order-types-admin'] }); }}
                         />
                         <div className="flex gap-2 pl-2">
                           <Select value={ot.input_mode} onValueChange={async (val) => {
                             const update: any = { input_mode: val };
                             if (val === 'text') update.source_table = null;
-                            await supabase.from('order_types').update(update).eq('id', ot.id);
+                            await kapwaClient.from('order_types').update(update).eq('id', ot.id);
                             qc.invalidateQueries({ queryKey: ['order-types-admin'] });
                           }}>
                             <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs h-8 w-28">
@@ -887,7 +887,7 @@ const AdminPage = () => {
                           </Select>
                           {ot.input_mode === 'select' && (
                             <Select value={ot.source_table || ''} onValueChange={async (val) => {
-                              await supabase.from('order_types').update({ source_table: val }).eq('id', ot.id);
+                              await kapwaClient.from('order_types').update({ source_table: val }).eq('id', ot.id);
                               qc.invalidateQueries({ queryKey: ['order-types-admin'] });
                             }}>
                               <SelectTrigger className="bg-secondary border-border text-foreground font-body text-xs h-8 w-36">
@@ -917,13 +917,13 @@ const AdminPage = () => {
                       <div key={cat.id} className="flex items-center gap-2">
                         <div className="flex-1">
                           <EditableRow id={cat.id} name={cat.name} active={cat.active}
-                            onRename={async (id, newName) => { await supabase.from('menu_categories').update({ name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category renamed'); }}
-                            onDelete={async (id) => { await supabase.from('menu_categories').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category deleted'); }}
-                            onToggle={async (id, checked) => { await supabase.from('menu_categories').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); }}
+                            onRename={async (id, newName) => { await kapwaClient.from('menu_categories').update({ name: newName }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category renamed'); }}
+                            onDelete={async (id) => { await kapwaClient.from('menu_categories').delete().eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); toast.success('Category deleted'); }}
+                            onToggle={async (id, checked) => { await kapwaClient.from('menu_categories').update({ active: checked }).eq('id', id); qc.invalidateQueries({ queryKey: ['menu-categories-admin'] }); }}
                           />
                         </div>
                         <Select value={(cat as any).department || 'kitchen'} onValueChange={async (val) => {
-                          await supabase.from('menu_categories').update({ department: val } as any).eq('id', cat.id);
+                          await kapwaClient.from('menu_categories').update({ department: val } as any).eq('id', cat.id);
                           qc.invalidateQueries({ queryKey: ['menu-categories-admin'] });
                           toast.success('Department updated');
                         }}>
@@ -1189,7 +1189,7 @@ const AdminPage = () => {
                 <span className="font-body text-sm text-foreground">Available</span>
                 <Switch checked={editItem.available}
                   onCheckedChange={async (checked) => {
-                    await supabase.from('menu_items').update({ available: checked }).eq('id', editItem.id);
+                    await kapwaClient.from('menu_items').update({ available: checked }).eq('id', editItem.id);
                     qc.invalidateQueries({ queryKey: ['menu-admin'] });
                     setEditItem({ ...editItem, available: checked });
                   }}

@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 interface HousekeeperPickerModalProps {
   open: boolean;
@@ -14,13 +14,13 @@ const HousekeeperPickerModal = ({ open, onOpenChange, onSelect }: HousekeeperPic
     queryKey: ['housekeeping-employees'],
     queryFn: async () => {
       // Get employees with housekeeping permission
-      const { data: perms } = await supabase.from('employee_permissions')
+      const { data: perms } = await kapwaClient.from('employee_permissions')
         .select('employee_id')
         .like('permission', 'housekeeping%');
       const hkPermIds = new Set((perms || []).map((p: any) => p.employee_id));
 
       // Also get employees with builtin:housekeeping role
-      const { data: roles } = await supabase.from('employee_roles')
+      const { data: roles } = await kapwaClient.from('employee_roles')
         .select('employee_id')
         .eq('role_key', 'builtin:housekeeping');
       const hkRoleIds = new Set((roles || []).map((r: any) => r.employee_id));
@@ -30,7 +30,7 @@ const HousekeeperPickerModal = ({ open, onOpenChange, onSelect }: HousekeeperPic
 
       if (allHkIds.size === 0) return [];
 
-      const { data: emps } = await supabase.from('employees')
+      const { data: emps } = await kapwaClient.from('employees')
         .select('id, name, display_name')
         .eq('active', true)
         .order('name');

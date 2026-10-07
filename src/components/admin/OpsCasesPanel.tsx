@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 
 interface OpsCase {
   id: string;
@@ -37,7 +37,7 @@ export default function OpsCasesPanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await kapwaClient
       .from('ops_cases')
       .select('*')
       .not('status', 'in', '(resolved,closed)')
@@ -53,7 +53,7 @@ export default function OpsCasesPanel() {
   const decide = async (c: OpsCase, approve: boolean) => {
     setDecidingId(c.id);
     try {
-      const { data, error } = await supabase.functions.invoke('resort-operator', {
+      const { data, error } = await kapwaClient.functions.invoke('resort-operator', {
         body: { action: 'decide', case_id: c.id, approve, decided_by: 'admin' },
       });
       if (error || data?.ok === false) throw new Error(error?.message || data?.error || 'decision failed');

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -63,7 +63,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: orders = [] } = useQuery({
     queryKey: ['reports-orders', dateFrom, dateTo],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .gte('created_at', dateFrom)
@@ -77,7 +77,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: closedTabs = [] } = useQuery({
     queryKey: ['reports-closed-tabs', dateFrom, dateTo],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('tabs')
         .select('*')
         .eq('status', 'Closed')
@@ -94,7 +94,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
     queryKey: ['reports-tab-orders', tabIds],
     queryFn: async () => {
       if (tabIds.length === 0) return [];
-      const { data } = await supabase
+      const { data } = await kapwaClient
         .from('orders')
         .select('*')
         .in('tab_id', tabIds)
@@ -129,7 +129,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: menuItems = [] } = useQuery({
     queryKey: ['menu-items-cost'],
     queryFn: async () => {
-      const { data } = await supabase.from('menu_items').select('name, food_cost');
+      const { data } = await kapwaClient.from('menu_items').select('name, food_cost');
       return data || [];
     },
   });
@@ -140,7 +140,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
   const { data: histRevenue = [], isLoading: histLoading } = useQuery({
     queryKey: ['historical-revenue', histDateFrom, histDateTo],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (kapwaClient as any)
         .from('historical_revenue')
         .select('*')
         .gte('date', histDateFrom)
@@ -373,7 +373,7 @@ const ReportsDashboard = ({ readOnly = false }: { readOnly?: boolean }) => {
       }
       setIsImporting(true);
       try {
-        const { error } = await supabase.from('orders').insert(rows as any);
+        const { error } = await kapwaClient.from('orders').insert(rows as any);
         if (error) throw error;
         toast.success(`${rows.length} transaction${rows.length !== 1 ? 's' : ''} imported successfully`);
       } catch (err: any) {

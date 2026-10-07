@@ -4,7 +4,7 @@ const ESCALATION_HOURS = 2;
 const MAINTENANCE_OVERDUE_HOURS = 24;
 const STUCK_ORDER_MINUTES = 45;
 const TOUR_CONFIRM_WINDOW_HOURS = 24;
-export async function loadResortState(supabase) {
+export async function loadResortState(db) {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const horizon = new Date(now.getTime() + 48 * 3600 * 1000).toISOString().slice(0, 10);
@@ -13,21 +13,21 @@ export async function loadResortState(supabase) {
     const maintenanceCutoff = new Date(now.getTime() - MAINTENANCE_OVERDUE_HOURS * 3600 * 1000).toISOString().slice(0, 10);
     const stuckOrderCutoff = new Date(now.getTime() - STUCK_ORDER_MINUTES * 60 * 1000).toISOString();
     const [arrivalsQ, departuresQ, requestsQ, housekeepingQ, tasksQ, tabsQ, webhooksQ, casesQ, maintenanceQ, reservationTasksQ, toursQ, ordersQ,] = await Promise.all([
-        supabase.from("resort_ops_bookings").select("*, resort_ops_guests(name), resort_ops_units(name)").eq("check_in", today),
-        supabase.from("resort_ops_bookings")
+        db.from("resort_ops_bookings").select("*, resort_ops_guests(name), resort_ops_units(name)").eq("check_in", today),
+        db.from("resort_ops_bookings")
             .select("id, guest_id, unit_id, check_out, room_rate, addons_total, paid_amount, resort_ops_guests(name), resort_ops_units(name)")
             .gte("check_out", today).lte("check_out", horizon),
-        supabase.from("guest_requests").select("*").not("status", "in", "(completed,cancelled)"),
-        supabase.from("housekeeping_orders").select("*").is("cleaning_completed_at", null),
-        supabase.from("resort_ops_tasks").select("*").eq("status", "pending").lt("due_date", today),
-        supabase.from("tabs").select("*").in("status", ["open", "Open"]),
-        supabase.from("webhook_events").select("*").eq("status", "failed").limit(50),
-        supabase.from("ops_cases").select("*").not("status", "in", "(resolved,closed)"),
-        supabase.from("resort_ops_tasks").select("*").eq("category", "maintenance").not("status", "in", "(completed,cancelled)"),
-        supabase.from("resort_ops_tasks").select("*").eq("category", "reservation").not("status", "in", "(completed,cancelled)"),
-        supabase.from("tour_bookings").select("*").lte("tour_date", tourHorizon).gte("tour_date", today)
+        db.from("guest_requests").select("*").not("status", "in", "(completed,cancelled)"),
+        db.from("housekeeping_orders").select("*").is("cleaning_completed_at", null),
+        db.from("resort_ops_tasks").select("*").eq("status", "pending").lt("due_date", today),
+        db.from("tabs").select("*").in("status", ["open", "Open"]),
+        db.from("webhook_events").select("*").eq("status", "failed").limit(50),
+        db.from("ops_cases").select("*").not("status", "in", "(resolved,closed)"),
+        db.from("resort_ops_tasks").select("*").eq("category", "maintenance").not("status", "in", "(completed,cancelled)"),
+        db.from("resort_ops_tasks").select("*").eq("category", "reservation").not("status", "in", "(completed,cancelled)"),
+        db.from("tour_bookings").select("*").lte("tour_date", tourHorizon).gte("tour_date", today)
             .or("captain_confirmed.is.null,captain_confirmed.eq.false,guide_confirmed.is.null,guide_confirmed.eq.false"),
-        supabase.from("orders").select("*").not("status", "in", "(Completed,Cancelled,Paid)").lt("created_at", stuckOrderCutoff),
+        db.from("orders").select("*").not("status", "in", "(Completed,Cancelled,Paid)").lt("created_at", stuckOrderCutoff),
     ]);
     const departures = departuresQ.data ?? [];
     const unpaidDepartures = departures

@@ -3,7 +3,7 @@ Booking-related tools, querying resort_ops_bookings / resort_ops_units / resort_
 """
 from __future__ import annotations
 from datetime import date, datetime, timedelta
-from agent.supabase_client import get_client
+from agent.kapwa_client import get_client
 from agent.tools.base import ToolResult
 
 

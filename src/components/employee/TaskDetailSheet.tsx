@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle2, Calendar, User, Clock } from 'lucide-react';
 import { format } from 'date-fns';
@@ -24,7 +24,7 @@ const TaskDetailSheet = ({ open, onOpenChange, task, employeeName, authorName, r
   const { data: commentCount = 0 } = useQuery({
     queryKey: ['task-comments-count', taskId],
     queryFn: async () => {
-      const { count } = await (supabase.from('task_comments' as any) as any)
+      const { count } = await (kapwaClient.from('task_comments' as any) as any)
         .select('*', { count: 'exact', head: true })
         .eq('task_id', taskId);
       return count || 0;

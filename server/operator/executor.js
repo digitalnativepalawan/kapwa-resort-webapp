@@ -10,9 +10,9 @@
 import { appendHistory, escalateCase, openCase, resolveCase } from "./cases.js";
 import { FORBIDDEN_WITHOUT_APPROVAL } from "./system-map.js";
 import { triageCase } from "./brain.js";
-async function audit(supabase, action, detail) {
+async function audit(db, action, detail) {
     try {
-        await supabase.from("audit_log").insert({
+        await db.from("audit_log").insert({
             actor: "resort-operator",
             action,
             details: typeof detail === "string" ? detail : JSON.stringify(detail),
@@ -35,19 +35,19 @@ function recentlyNotified(history) {
  * a delivery failure must not stop the loop; it just tries again next cycle.
  * The agent only ever asks the guest to pay; it never moves money itself.
  */
-async function sendPaymentRequest(supabase, a, caseRow) {
+async function sendPaymentRequest(db, a, caseRow) {
     if (recentlyNotified(caseRow.history))
         return { sent: false, detail: "cooldown" };
     try {
         const guestId = a.input?.guest_id;
         let phone = null;
         if (guestId) {
-            const { data } = await supabase.from("resort_ops_guests").select("phone").eq("id", guestId).maybeSingle();
+            const { data } = await db.from("resort_ops_guests").select("phone").eq("id", guestId).maybeSingle();
             phone = data?.phone ?? null;
         }
         if (!phone)
             return { sent: false, detail: "no_guest_phone" };
-        const { data, error } = await supabase.functions.invoke("guest-whatsapp", {
+        const { data, error } = await db.functions.invoke("guest-whatsapp", {
             body: {
                 to: phone,
                 guest_name: caseRow.guest_name ?? "",
@@ -67,72 +67,72 @@ async function sendPaymentRequest(supabase, a, caseRow) {
 }
 // ── Verification rules: every rule checks the DATABASE, not the plan ────────
 const VERIFIERS = {
-    guest_request_completed: async (supabase, c) => {
-        const { data } = await supabase.from("guest_requests")
+    guest_request_completed: async (db, c) => {
+        const { data } = await db.from("guest_requests")
             .select("status, completed_at, completed_by").eq("id", c.source_id).single();
         return {
             ok: data?.status === "completed" || !!data?.completed_at,
             evidence: { guest_request: data },
         };
     },
-    balance_cleared: async (supabase, c) => {
-        const { data } = await supabase.from("resort_ops_bookings")
+    balance_cleared: async (db, c) => {
+        const { data } = await db.from("resort_ops_bookings")
             .select("room_rate, addons_total, paid_amount").eq("id", c.source_id).single();
         if (!data)
             return { ok: false, evidence: { missing: true } };
         const balance = Number(data.room_rate ?? 0) + Number(data.addons_total ?? 0) - Number(data.paid_amount ?? 0);
         return { ok: balance <= 0, evidence: { balance, ...data } };
     },
-    housekeeping_order_exists: async (supabase, c) => {
-        const { data } = await supabase.from("housekeeping_orders")
+    housekeeping_order_exists: async (db, c) => {
+        const { data } = await db.from("housekeeping_orders")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         return { ok: !!data, evidence: { order: data } };
     },
-    housekeeping_cleaning_completed: async (supabase, c) => {
-        const { data } = await supabase.from("housekeeping_orders")
+    housekeeping_cleaning_completed: async (db, c) => {
+        const { data } = await db.from("housekeeping_orders")
             .select("id, status, cleaning_completed_at").eq("id", c.source_id).maybeSingle();
         return { ok: !!data?.cleaning_completed_at, evidence: { order: data } };
     },
-    task_exists: async (supabase, c) => {
-        const { data } = await supabase.from("resort_ops_tasks")
+    task_exists: async (db, c) => {
+        const { data } = await db.from("resort_ops_tasks")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         return { ok: !!data, evidence: { task: data } };
     },
-    task_completed: async (supabase, c) => {
-        const { data } = await supabase.from("resort_ops_tasks")
+    task_completed: async (db, c) => {
+        const { data } = await db.from("resort_ops_tasks")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         return { ok: data?.status === "completed", evidence: { task: data } };
     },
-    tour_confirmed: async (supabase, c) => {
-        const { data } = await supabase.from("tour_bookings")
+    tour_confirmed: async (db, c) => {
+        const { data } = await db.from("tour_bookings")
             .select("id, captain_confirmed, guide_confirmed").eq("id", c.source_id).maybeSingle();
         return { ok: !!data?.captain_confirmed && !!data?.guide_confirmed, evidence: { tour: data } };
     },
-    order_closed: async (supabase, c) => {
-        const { data } = await supabase.from("orders")
+    order_closed: async (db, c) => {
+        const { data } = await db.from("orders")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         return { ok: !!data && ["Completed", "Paid", "Cancelled"].includes(data.status), evidence: { order: data } };
     },
-    guest_checked_in: async (supabase, c) => {
-        const { data } = await supabase.from("resort_ops_bookings")
+    guest_checked_in: async (db, c) => {
+        const { data } = await db.from("resort_ops_bookings")
             .select("id, checked_in_at, checked_out_at").eq("id", c.source_id).maybeSingle();
         // Resolved if the guest checked in, or the booking was closed out (released/no-show handled).
         return { ok: !!data && (!!data.checked_in_at || !!data.checked_out_at), evidence: { booking: data } };
     },
-    tab_closed: async (supabase, c) => {
-        const { data } = await supabase.from("tabs")
+    tab_closed: async (db, c) => {
+        const { data } = await db.from("tabs")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         const status = String(data?.status ?? "").toLowerCase();
         return { ok: !!data && status !== "open", evidence: { tab: data } };
     },
-    webhook_resolved: async (supabase, c) => {
-        const { data } = await supabase.from("webhook_events")
+    webhook_resolved: async (db, c) => {
+        const { data } = await db.from("webhook_events")
             .select("id, status").eq("id", c.source_id).maybeSingle();
         const status = String(data?.status ?? "").toLowerCase();
         return { ok: !data || status !== "failed", evidence: { webhook: data } };
     },
 };
-export async function execute(supabase, actions, maxActions = 25) {
+export async function execute(db, actions, maxActions = 25) {
     const results = [];
     for (const a of actions.slice(0, maxActions)) {
         try {
@@ -142,16 +142,16 @@ export async function execute(supabase, actions, maxActions = 25) {
                 // LLM brain: refine priority + explain. Null on any failure = planner values win.
                 const triage = await triageCase(a);
                 const effectivePriority = triage?.priority ?? a.priority;
-                const { case: c, created } = await openCase(supabase, {
+                const { case: c, created } = await openCase(db, {
                     ...a.case,
                     priority: effectivePriority,
                     approval_required: mustApprove,
                     verification_rule: a.verificationRule,
                 });
                 if (created) {
-                    await audit(supabase, "case_opened", { case_id: c.id, domain: c.domain, issue: c.issue_type });
+                    await audit(db, "case_opened", { case_id: c.id, domain: c.domain, issue: c.issue_type });
                     if (triage) {
-                        await appendHistory(supabase, c.id, "llm_triage", {
+                        await appendHistory(db, c.id, "llm_triage", {
                             explanation: triage.explanation,
                             priority: triage.priority,
                             planner_priority: a.priority,
@@ -163,11 +163,11 @@ export async function execute(supabase, actions, maxActions = 25) {
                 }
                 let sideEffect = null;
                 if (a.tool === "send_payment_request" && !mustApprove) {
-                    const result = await sendPaymentRequest(supabase, a, c);
+                    const result = await sendPaymentRequest(db, a, c);
                     sideEffect = result;
                     if (result.sent) {
-                        await appendHistory(supabase, c.id, "payment_request_sent", result.detail);
-                        await audit(supabase, "payment_request_sent", { case_id: c.id, ...(result.detail ?? {}) });
+                        await appendHistory(db, c.id, "payment_request_sent", result.detail);
+                        await audit(db, "payment_request_sent", { case_id: c.id, ...(result.detail ?? {}) });
                     }
                 }
                 results.push({
@@ -184,7 +184,7 @@ export async function execute(supabase, actions, maxActions = 25) {
                 continue;
             }
             if (a.tool === "verify_case") {
-                const { data: c } = await supabase.from("ops_cases").select("*").eq("id", a.input.case_id).single();
+                const { data: c } = await db.from("ops_cases").select("*").eq("id", a.input.case_id).single();
                 if (!c) {
                     results.push({ key: a.key, tool: a.tool, status: "skipped" });
                     continue;
@@ -194,18 +194,18 @@ export async function execute(supabase, actions, maxActions = 25) {
                     results.push({ key: a.key, tool: a.tool, status: "skipped", detail: "no verifier" });
                     continue;
                 }
-                const { ok, evidence } = await verifier(supabase, c);
+                const { ok, evidence } = await verifier(db, c);
                 if (ok) {
-                    await resolveCase(supabase, c.id, evidence);
-                    await audit(supabase, "case_verified_resolved", { case_id: c.id, evidence });
+                    await resolveCase(db, c.id, evidence);
+                    await audit(db, "case_verified_resolved", { case_id: c.id, evidence });
                     results.push({ key: a.key, tool: a.tool, status: "verified_resolved", detail: { case_id: c.id } });
                 }
                 else if (c.due_at && new Date(c.due_at) < new Date() && c.status !== "escalated") {
                     const retries = (c.retry_count ?? 0) + 1;
-                    await supabase.from("ops_cases").update({ retry_count: retries }).eq("id", c.id);
+                    await db.from("ops_cases").update({ retry_count: retries }).eq("id", c.id);
                     if (retries >= 2) {
-                        await escalateCase(supabase, c, "verification failed past due date");
-                        await audit(supabase, "case_escalated", { case_id: c.id });
+                        await escalateCase(db, c, "verification failed past due date");
+                        await audit(db, "case_escalated", { case_id: c.id });
                         results.push({ key: a.key, tool: a.tool, status: "escalated", detail: { case_id: c.id } });
                     }
                     else {
@@ -218,12 +218,12 @@ export async function execute(supabase, actions, maxActions = 25) {
                 continue;
             }
             if (a.tool === "escalate_case") {
-                let { data: c } = await supabase.from("ops_cases").select("*")
+                let { data: c } = await db.from("ops_cases").select("*")
                     .eq("source_table", a.input.source_table).eq("source_id", a.input.source_id)
                     .not("status", "in", "(resolved,closed)").maybeSingle();
                 if (!c) {
                     // Case may not exist yet (e.g. request became overdue before first cycle).
-                    const opened = await openCase(supabase, {
+                    const opened = await openCase(db, {
                         domain: a.domain,
                         issue_type: "overdue",
                         source_table: String(a.input.source_table),
@@ -235,8 +235,8 @@ export async function execute(supabase, actions, maxActions = 25) {
                     c = opened.case;
                 }
                 if (c && c.status !== "escalated") {
-                    await escalateCase(supabase, c, "overdue SLA");
-                    await audit(supabase, "case_escalated", { case_id: c.id });
+                    await escalateCase(db, c, "overdue SLA");
+                    await audit(db, "case_escalated", { case_id: c.id });
                     results.push({ key: a.key, tool: a.tool, status: "escalated", detail: { case_id: c.id } });
                 }
                 else {
@@ -253,10 +253,10 @@ export async function execute(supabase, actions, maxActions = 25) {
     return results;
 }
 /** Human approval endpoint helper: approve or reject a pending case. */
-export async function decideCase(supabase, caseId, approve, decidedBy) {
+export async function decideCase(db, caseId, approve, decidedBy) {
     const patch = approve
         ? { status: "in_progress", approved_by: decidedBy, approved_at: new Date().toISOString() }
         : { status: "closed", closed_at: new Date().toISOString() };
-    await appendHistory(supabase, caseId, approve ? "approved" : "rejected", { by: decidedBy }, patch);
-    await audit(supabase, approve ? "case_approved" : "case_rejected", { case_id: caseId, by: decidedBy });
+    await appendHistory(db, caseId, approve ? "approved" : "rejected", { by: decidedBy }, patch);
+    await audit(db, approve ? "case_approved" : "case_rejected", { case_id: caseId, by: decidedBy });
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { getStaffSession, setStaffSession } from '@/lib/session';
 import {
   STAFF_JWT_MODE,
@@ -80,7 +80,7 @@ const AuthDiagnostics = () => {
     const tables = ['employees', 'employee_permissions', 'payroll_payments', 'audit_log'];
     const out: TableProbeResult[] = [];
     for (const table of tables) {
-      const { count, error } = await (supabase.from(table as 'employees') as ReturnType<typeof supabase.from>)
+      const { count, error } = await (kapwaClient.from(table as 'employees') as ReturnType<typeof kapwaClient.from>)
         .select('id', { count: 'exact', head: true });
       if (error) {
         out.push({ table, ok: false, detail: `${error.code ?? ''} ${error.message}`.trim() });
@@ -93,7 +93,7 @@ const AuthDiagnostics = () => {
   };
 
   const reMintDevToken = async () => {
-    const { data, error } = await supabase.functions.invoke('employee-auth', {
+    const { data, error } = await kapwaClient.functions.invoke('employee-auth', {
       body: { action: 'admin-verify', name: 'David', pin: '5309' },
     });
     if (error || data?.error) {

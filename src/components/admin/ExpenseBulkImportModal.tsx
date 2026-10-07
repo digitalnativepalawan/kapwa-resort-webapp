@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
+import { kapwaClient } from '@/lib/kapwaClient';
 import { toast } from 'sonner';
 import { Download, Upload } from 'lucide-react';
 import { EXPENSE_CATEGORIES, VAT_STATUSES, computeVatFields } from './ResortOpsDashboard';
@@ -141,7 +141,7 @@ const ExpenseBulkImportModal = ({ open, onOpenChange, onComplete }: ExpenseBulkI
     }
 
     if (rows.length > 0) {
-      const { error } = await supabase.from('resort_ops_expenses' as any).insert(rows as any);
+      const { error } = await kapwaClient.from('resort_ops_expenses' as any).insert(rows as any);
       if (error) {
         errors.push(`DB error: ${error.message}`);
       }
